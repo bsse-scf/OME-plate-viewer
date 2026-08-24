@@ -23,6 +23,7 @@ import {
   type PortalMessage,
 } from './protocol';
 import { isNotFound, isTypeMismatch, openDatasetFile } from './files';
+import { createGate } from './gate';
 import { serveZarr } from './serve';
 import { readPlaneLayout, type PlaneLayout } from '../yokogawa/tiff';
 
@@ -39,16 +40,26 @@ const BASE_PATH = new URL(sw.registration.scope).pathname;
 const ZARR_PREFIX = namespacePrefix(BASE_PATH, ZARR_SEGMENT);
 
 /**
- * How many chunks may be materialised at once.
+ * How much chunk work may be in flight at once, in bytes of working set.
  *
- * Neuroglancer opens a viewport's worth of chunks in parallel, and each one
- * holds the rows it sampled plus its own output. Bounding the number in flight
- * bounds peak memory by the *chunk* rather than by the dataset: a few megabytes
- * at the coarse levels a plate view uses, and on the order of a hundred in the
- * worst case, a viewport filled with full-resolution chunks. That is what keeps
- * a 226 GB plate open in a tab.
+ * Bounding memory by *bytes* rather than by a count is what lets the two cases
+ * coexist. A full-resolution chunk holds around nine megabytes while it is
+ * built, so this admits about ten of them; a chunk from the coarse levels a
+ * plate view uses holds a few hundred kilobytes, so this admits as many as the
+ * ceiling below allows. A fixed count would have to be set for the expensive
+ * case and would then throttle the cheap one — which is the common one, since a
+ * single z step asks for hundreds of chunks and each is one open of a file on a
+ * filesystem that may well be remote.
  */
-const MAX_CONCURRENT_CHUNKS = 12;
+const CHUNK_BUDGET_BYTES = 96 * 1024 * 1024;
+
+/**
+ * A ceiling on concurrent reads, whatever the budget says.
+ *
+ * Small chunks would otherwise fan out to hundreds of simultaneous opens, which
+ * stops helping well before that and starts competing with itself.
+ */
+const MAX_CONCURRENT_CHUNKS = 64;
 
 sw.addEventListener('install', () => {
   // Take over immediately: a freshly dropped folder should be readable without
@@ -74,7 +85,7 @@ sw.addEventListener('fetch', (event) => {
           resolveDirectoryCached(dataset.id, root, segments),
         ),
       planeLayout: getPlaneLayout,
-      gate: chunkGate,
+      gate: gate.run,
     }),
   );
 });
@@ -207,19 +218,7 @@ function getPlaneLayout(
 
 /* ------------------------------------------------------------ concurrency */
 
-let inFlight = 0;
-const waiting: (() => void)[] = [];
-
-/** Run `task` once fewer than {@link MAX_CONCURRENT_CHUNKS} others are running. */
-async function chunkGate<T>(task: () => Promise<T>): Promise<T> {
-  if (inFlight >= MAX_CONCURRENT_CHUNKS) {
-    await new Promise<void>((release) => waiting.push(release));
-  }
-  inFlight += 1;
-  try {
-    return await task();
-  } finally {
-    inFlight -= 1;
-    waiting.shift()?.();
-  }
-}
+const gate = createGate({
+  budget: CHUNK_BUDGET_BYTES,
+  maxConcurrent: MAX_CONCURRENT_CHUNKS,
+});

@@ -161,6 +161,22 @@ function writer(format: SampleFormat): (view: DataView, index: number, value: nu
 }
 
 /**
+ * How much memory building this chunk will hold at once.
+ *
+ * Estimated from the geometry alone, so admission can be decided before any
+ * file is opened. It mirrors the decisions {@link materialiseChunk} makes —
+ * how many rows it will sample, and whether it will read them as one span —
+ * closely enough to serve as a budget, which is all it is.
+ */
+export function workingSetBytes(geometry: ChunkGeometry, bytesPerSample: number): number {
+  const scaleY = geometry.cellY / geometry.outY;
+  const rowsPerSample = Math.max(1, Math.min(MAX_ROWS_PER_SAMPLE, Math.floor(scaleY)));
+  const sampled = geometry.outY * rowsPerSample;
+  const rows = sampled >= geometry.cellY * READ_WHOLE_FRACTION ? geometry.cellY : sampled;
+  return rows * geometry.fieldX * bytesPerSample + geometry.outY * geometry.outX * bytesPerSample;
+}
+
+/**
  * A chunk that can be answered as a byte range of the file, with no copy.
  *
  * True for the level-0 chunk of a well whose fields do not overlap — one field

@@ -9,9 +9,10 @@
  *
  * Reading the files themselves is in `files.ts`, which the page shares.
  */
-import { materialiseChunk, passthroughRange } from '../yokogawa/chunk';
+import { materialiseChunk, parseDtype, passthroughRange, workingSetBytes } from '../yokogawa/chunk';
 import type { PlaneLayout } from '../yokogawa/tiff';
-import { findWell, resolve } from '../yokogawa/zarr';
+import { findWell, resolve, type Resolution } from '../yokogawa/zarr';
+import { AbortError } from './gate';
 import { isNotAllowed } from './files';
 import { SW_VERSION, type DatasetRecord } from './protocol';
 
@@ -180,8 +181,13 @@ export interface ZarrServeOptions {
   openFile: (dataset: DatasetRecord, path: string) => Promise<File | null>;
   /** Read a plane's TIFF directory, with whatever caching the host provides. */
   planeLayout: (dataset: DatasetRecord, path: string, file: File) => Promise<PlaneLayout>;
-  /** Bound the work in flight, so a viewport full of chunks cannot swamp memory. */
-  gate?: <T>(task: () => Promise<T>) => Promise<T>;
+  /**
+   * Bound the work in flight, so a viewport full of chunks cannot swamp memory.
+   *
+   * `cost` is the working set the task will hold; `signal` lets the host drop
+   * the task if the viewer stops wanting it before it starts.
+   */
+  gate?: <T>(cost: number, task: () => Promise<T>, signal?: AbortSignal) => Promise<T>;
 }
 
 /**
@@ -214,7 +220,7 @@ export async function serveZarr(
     return errorResponse(404, 'Not Found', { 'X-Local-Error': 'unknown-well' });
   }
 
-  let resolution;
+  let resolution: Resolution;
   try {
     resolution = resolve(dataset.model, well, rest);
   } catch (error) {
@@ -233,48 +239,102 @@ export async function serveZarr(
     return serveBlob(request, new Blob([resolution.body]), 'application/json');
   }
 
-  const run = options.gate ?? ((task: () => Promise<Response>) => task());
-  return run(async () => {
-    let file: File | null;
+  // Neuroglancer drops the chunks it no longer needs the moment the view
+  // moves. Chrome does not pass that on through `FetchEvent.request.signal` —
+  // it is never aborted — but it does cancel the *response stream*, so that is
+  // what the work is hung from. Everything expensive happens inside the stream,
+  // and a cancel unhooks it: a chunk still queued is dropped before it reads
+  // anything, and the requests that replaced it get the bandwidth instead.
+  const run = options.gate ?? (<T,>(_cost: number, task: () => Promise<T>) => task());
+  const chunk = resolution;
+  const record = dataset;
+
+  let file: File | null;
+  try {
+    // Cheap: a directory lookup, no pixels. Done before the response so that a
+    // plane the acquisition never wrote is still an honest 404, which Zarr
+    // reads as the array's fill value.
+    file = await options.openFile(record, chunk.file);
+  } catch (error) {
+    if (isNotAllowed(error)) {
+      return errorResponse(
+        403,
+        'Read permission for this folder was not granted. Drop the folder on the page again.',
+        { 'X-Local-Error': 'permission-lost' },
+      );
+    }
+    return errorResponse(500, `Error reading ${chunk.file}: ${String(error)}`);
+  }
+  if (!file) {
+    return errorResponse(404, `Missing plane ${chunk.file}`, { 'X-Local-Error': 'missing-plane' });
+  }
+
+  const source = file;
+  const cost = workingSetBytes(chunk.geometry, record.model.bytesPerSample);
+
+  /**
+   * Read the chunk's bytes: the whole expensive half, behind the gate.
+   *
+   * The TIFF directory is read here rather than before the response, even
+   * though it is only two small reads. A request that has not yet produced a
+   * response has nothing to cancel, so anything done ahead of the stream is
+   * work the viewer cannot call off — and with a viewport's worth of requests
+   * arriving at once, those small reads are enough to matter.
+   */
+  const read = async (): Promise<Uint8Array> => {
+    const layout = await options.planeLayout(record, chunk.file, source);
+
+    // The whole point of the format: when the chunk is exactly the plane and
+    // the plane is uncompressed, its bytes are a range of the file.
+    const direct = passthroughRange(layout, chunk.geometry, chunk.dtype);
+    if (direct) {
+      return new Uint8Array(await source.slice(direct.start, direct.end).arrayBuffer());
+    }
+    return materialiseChunk(source, layout, chunk.geometry, chunk.dtype);
+  };
+
+  // A chunk's size follows from its geometry, so the length can be declared
+  // before a single pixel is read — which is what lets the response go out
+  // first and the reading hang off it.
+  const length = chunk.geometry.outY * chunk.geometry.outX * parseDtype(chunk.dtype).bytes;
+
+  // HEAD and byte ranges are answered from a finished buffer: neither is on the
+  // viewer's path, and both need the whole chunk anyway.
+  if (request.method === 'HEAD' || request.headers.get('Range')) {
     try {
-      file = await options.openFile(dataset, resolution.file);
+      return serveBlob(request, new Blob([await run(cost, read)]), 'application/octet-stream');
     } catch (error) {
-      if (isNotAllowed(error)) {
-        return errorResponse(
-          403,
-          'Read permission for this folder was not granted. Drop the folder on the page again.',
-          { 'X-Local-Error': 'permission-lost' },
-        );
+      return errorResponse(500, `Could not read ${chunk.file}: ${String(error)}`);
+    }
+  }
+
+  const cancelled = new AbortController();
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        const bytes = await run(cost, read, cancelled.signal);
+        // The viewer may have moved on while this was being built, in which
+        // case the stream is already gone and there is nothing to hand it.
+        if (cancelled.signal.aborted) return;
+        controller.enqueue(bytes);
+        controller.close();
+      } catch (error) {
+        // A cancelled chunk is the normal case, not a fault.
+        if (cancelled.signal.aborted || error instanceof AbortError) return;
+        console.warn(`cq3000: could not read ${chunk.file}`, error);
+        controller.error(error);
       }
-      return errorResponse(500, `Error reading ${resolution.file}: ${String(error)}`);
-    }
-    if (!file) {
-      return errorResponse(404, `Missing plane ${resolution.file}`, {
-        'X-Local-Error': 'missing-plane',
-      });
-    }
+    },
+    cancel() {
+      cancelled.abort();
+    },
+  });
 
-    try {
-      const layout = await options.planeLayout(dataset, resolution.file, file);
-
-      // The whole point of the format: when the chunk is exactly the plane and
-      // the plane is uncompressed, the answer is a byte range of the file.
-      const direct = passthroughRange(layout, resolution.geometry, resolution.dtype);
-      if (direct) {
-        return serveBlob(
-          request,
-          file.slice(direct.start, direct.end),
-          'application/octet-stream',
-          { 'X-Chunk-Source': 'passthrough' },
-        );
-      }
-
-      const bytes = await materialiseChunk(file, layout, resolution.geometry, resolution.dtype);
-      return serveBlob(request, new Blob([bytes]), 'application/octet-stream', {
-        'X-Chunk-Source': 'resampled',
-      });
-    } catch (error) {
-      return errorResponse(500, `Could not read ${resolution.file}: ${String(error)}`);
-    }
+  return new Response(body, {
+    status: 200,
+    headers: baseHeaders({
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': String(length),
+    }),
   });
 }

@@ -223,8 +223,8 @@ separate, which turns the finest levels into a single sequential read and the
 coarsest into a handful of small ones.
 
 When the chunk *is* the plane — a well with one field, no overlap to trim, at
-level 0 — there is nothing to do at all, and the response is a byte range of the
-file. `X-Chunk-Source: passthrough` says so.
+level 0 — there is nothing to do at all, and its bytes are a range of the file
+(`passthroughRange`): no crop, no reduction, no copy out of the decoded rows.
 
 Measured on the example acquisitions, over a network filesystem:
 
@@ -263,14 +263,65 @@ adds the parts that need a worker:
 * **A TIFF-directory cache.** Reading one costs two small range reads, and the
   same plane answers several chunks over a session — again at every resolution
   level.
-* **A concurrency bound.** Neuroglancer opens a viewport's worth of chunks at
-  once, and each holds the rows it sampled plus its own output. Twelve in flight
-  bounds peak memory by the *chunk* rather than by the dataset: a few megabytes
-  at the coarse levels a plate view uses, on the order of a hundred in the worst
-  case of a viewport filled with full-resolution chunks.
+* **Admission control** (`src/vfs/gate.ts`), which is where the viewer's
+  responsiveness is won or lost. It has its own section below.
 
 A missing chunk — a gap in the acquisition grid, a z plane outside a field's
 stack — is a 404, which Zarr reads as the array's fill value.
+
+## Admission control, and letting go
+
+A single z step asks for hundreds of chunks. On the example acquisition it is
+576: thirty-six fields, four channels, and the four resolution levels
+Neuroglancer keeps loaded at once. Two things decide how that feels.
+
+**The limit is a budget of bytes, not a count.** A full-resolution chunk holds
+about nine megabytes of working set while it is built — the rows it read plus
+its own output — and a chunk from the coarse levels a plate view uses holds a
+few hundred kilobytes. A fixed count has to be chosen for the expensive case and
+then throttles the cheap one, which is the common one. A 96 MB budget admits
+about ten of the first and as many of the second as the concurrency ceiling
+allows. The cost is estimated from the geometry alone
+(`workingSetBytes`), so admission is decided before a file is opened.
+
+**Cancelled chunks stop being read.** Neuroglancer drops the chunks it no longer
+needs the moment the view moves, which is what keeps it responsive — but only if
+the other side listens. A queue that holds on to cancelled work makes the
+requests that replaced it wait behind reads whose results are already being
+discarded. Three hundred outstanding full-resolution chunks are 1.7 GB; a
+request arriving behind them waited seconds.
+
+The obvious hook does not work. `FetchEvent.request.signal` exists in a Service
+Worker and Chrome never aborts it, so a worker that watches it learns nothing —
+measured, before and after: 5951 ms against 6377 ms, no difference at all. What
+Chrome *does* cancel is the **response stream**. So a chunk's work hangs off
+one: the response goes out immediately carrying the length its geometry implies,
+the reading happens inside the stream, and `cancel()` aborts it.
+
+Which means **nothing expensive may happen before the response exists**, because
+until then there is no stream to cancel. That turned out to matter more than it
+sounds: reading the TIFF directory is only two small reads, but with a
+viewport's worth of requests arriving together, doing it ahead of the response
+left most of them past the point of no return by the time the view moved.
+Moving it inside took the same measurement from 32.5 s to 0.55 s.
+
+Measured on the example acquisitions, one request issued behind three hundred
+others:
+
+| | cancelled | left running |
+| --- | --- | --- |
+| 96-well, one field | **552 ms** | 10454 ms |
+| 30-well, 36 fields | **483 ms** | 6448 ms |
+
+In the viewer, a second z step made a second and a half into the first — with
+576 requests in flight — returns its first data in 0.17 s and all of it within
+0.33 s. A single uninterrupted z step went from 10.7 s to 5.9 s on the same
+data, which is the byte budget rather than the cancellation: that acquisition
+sits on a network filesystem and is bandwidth-bound, so the honest summary is
+that concurrency helps a little and not reading unwanted data helps a lot.
+
+Byte ranges and `HEAD` are answered from a finished buffer instead: neither is
+on the viewer's path, and both need the whole chunk anyway.
 
 Requests are rejected before touching the filesystem if any segment decodes to
 `.`, `..`, an encoded `/`, or a NUL.
@@ -391,11 +442,10 @@ read once, streamed well by well, and cached by Neuroglancer for the rest of the
 session. The pyramid is taken as deep as it usefully goes precisely to keep that
 number down; a shallower one would multiply it.
 
-Peak memory is bounded by the concurrency gate rather than by the dataset:
-twelve chunks in flight, each holding its sampled rows and its own output —
-single-digit megabytes at the levels a plate view uses. Nothing accumulates
-between requests; the only things cached are directory handles and TIFF
-directories, both of them a few numbers each.
+Peak memory is bounded by the admission budget rather than by the dataset: 96 MB
+of chunk working set in flight, whatever the zoom. Nothing accumulates between
+requests; the only things cached are directory handles and TIFF directories,
+both of them a few numbers each.
 
 ## Deployment
 
@@ -439,6 +489,7 @@ src/
     protocol.ts             the page/worker contract
     idb.ts                  a minimal IndexedDB wrapper
     files.ts                opening files inside a dataset folder
+    gate.ts                 admission control: a byte budget, and cancellation
     serve.ts                HTTP semantics and the chunk pipeline
     sw.ts                   Service Worker: lifecycle, caches, concurrency
     client.ts               registration, base-path derivation, URLs

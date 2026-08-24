@@ -89,10 +89,7 @@ for (const path of paths) {
       assert.equal(response.status, 200, `level ${level}`);
       const bytes = await response.arrayBuffer();
       assert.equal(bytes.byteLength, outY * outX * model.bytesPerSample);
-      console.log(
-        `  level ${level}: ${outY}x${outX} chunk in ${Date.now() - at} ms ` +
-          `(${response.headers.get('X-Chunk-Source')})`,
-      );
+      console.log(`  level ${level}: ${outY}x${outX} chunk in ${Date.now() - at} ms`);
     }
   });
 }

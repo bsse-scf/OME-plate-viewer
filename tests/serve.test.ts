@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { loadPlateModel } from '../src/yokogawa/model';
+import { passthroughRange } from '../src/yokogawa/chunk';
 import { readPlaneLayout } from '../src/yokogawa/tiff';
 import { openDatasetFile } from '../src/vfs/files';
 import { parsePath, serveZarr } from '../src/vfs/serve';
@@ -120,13 +121,26 @@ test('a reduced chunk is the mean of the block it covers', async (t) => {
 });
 
 test('a well with one field is served straight from the file', async (t) => {
-  const { get, cleanup } = await mount();
+  const { get, dataset, cleanup } = await mount();
   t.after(cleanup);
 
   const response = await get('abc123/B3/0/0.0.1.0.0');
   assert.equal(response.status, 200);
-  // No trimming and no reduction, so the chunk is a byte range of the TIFF.
-  assert.equal(response.headers.get('X-Chunk-Source'), 'passthrough');
+
+  // No trimming and no reduction, so the chunk *is* the plane: the reader
+  // should take the zero-copy decision rather than resampling it.
+  const well = dataset.model.wells.find((candidate: { id: string }) => candidate.id === 'B3')!;
+  const tile = well.tiles[0];
+  const plane = (await openDatasetFile(dataset.handle, tile.files[1]))!;
+  const layout = await readPlaneLayout(plane);
+  assert.ok(
+    passthroughRange(layout, {
+      cellY: well.cellY, cellX: well.cellX,
+      fieldY: tile.sizeY, fieldX: tile.sizeX,
+      outY: well.cellY, outX: well.cellX,
+    }, dataset.model.dtype),
+    'a full-resolution chunk of an untrimmed field should be a byte range',
+  );
 
   const values = await samples(response);
   assert.equal(values.length, DEFAULT_FIXTURE.field ** 2);

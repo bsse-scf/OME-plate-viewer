@@ -302,13 +302,23 @@ async function checkAcquisition(page, base, path, chunkFailures) {
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null, { timeout: 20000 });
   chunkFailures.length = 0;
 
+  // A dataset from an earlier acquisition is reopened on load, so close it —
+  // otherwise the panel is already showing and there is nothing to wait for.
+  await page.evaluate(() => {
+    const section = document.getElementById('dataset');
+    if (section && !section.hidden) document.getElementById('close-dataset').click();
+  });
+  await page.waitForFunction(() => document.getElementById('dataset').hidden, { timeout: 20000 });
+
   await dropFolder(page, path);
   await page.waitForFunction(
-    () => {
+    (folder) => {
       const section = document.getElementById('dataset');
-      return section !== null && !section.hidden;
+      if (section === null || section.hidden) return false;
+      return document.getElementById('dataset-name').textContent.includes(folder);
     },
     { timeout: 600000, polling: 500 },
+    name,
   );
 
   const summary = await page.evaluate(() => ({
@@ -357,6 +367,90 @@ async function checkAcquisition(page, base, path, chunkFailures) {
     chunkFailures.length === 0,
     'no chunk request failed',
     `${chunkFailures.length}, e.g. ${chunkFailures.slice(0, 3).join(', ')}`,
+  );
+
+  await checkCancellation(page);
+}
+
+/**
+ * Cancelled chunks have to stop being read.
+ *
+ * Neuroglancer drops the chunks it no longer needs as soon as the view moves,
+ * and if the other side keeps reading them anyway, the requests that replaced
+ * them wait behind hundreds of megabytes nobody will look at — which is the
+ * pause a user feels after panning or scrolling through z. Chrome does not
+ * abort `FetchEvent.request.signal`, so the work hangs off the response stream
+ * instead; this checks that the stream's cancellation actually arrives.
+ */
+async function checkCancellation(page) {
+  const timings = await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('yokogawa-cq3000-viewer');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const [record] = await new Promise((resolve, reject) => {
+      const request = db.transaction('datasets', 'readonly').objectStore('datasets').getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    // Level 1 is built rather than handed back as a byte range, in every
+    // acquisition, so it is the level where cancelling saves real work.
+    const keys = [];
+    for (const well of record.model.wells) {
+      const level = Math.min(1, well.levels - 1);
+      for (let c = 0; c < record.model.sizeC; c += 1) {
+        for (let z = 0; z < well.sizeZ; z += 1) {
+          for (let gy = 0; gy < well.gridRows; gy += 1) {
+            for (let gx = 0; gx < well.gridColumns; gx += 1) {
+              keys.push(
+                new URL(`./_zarr/${record.id}/${well.id}/${level}/0.${c}.${z}.${gy}.${gx}`,
+                  location.href).href,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    const time = async (url) => {
+      const at = performance.now();
+      await (await fetch(url)).arrayBuffer();
+      return performance.now() - at;
+    };
+    const burst = (from, count, signal) =>
+      keys.slice(from, from + count).map((url) =>
+        fetch(url, { signal }).then((r) => r.arrayBuffer()).catch(() => {}));
+
+    const size = Math.min(300, Math.floor((keys.length - 2) / 2));
+    const alone = await time(keys[0]);
+
+    const controller = new AbortController();
+    const dropped = burst(1, size, controller.signal);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    controller.abort();
+    const afterCancelling = await time(keys[keys.length - 1]);
+    await Promise.allSettled(dropped);
+
+    const live = burst(1 + size, size, undefined);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    const behindLive = await time(keys[keys.length - 2]);
+    await Promise.allSettled(live);
+
+    return { alone, afterCancelling, behindLive, size };
+  });
+
+  console.log(
+    `  one chunk alone ${timings.alone.toFixed(0)} ms; ` +
+      `after cancelling ${timings.size} ${timings.afterCancelling.toFixed(0)} ms; ` +
+      `behind ${timings.size} live ${timings.behindLive.toFixed(0)} ms`,
+  );
+  check(
+    timings.afterCancelling * 2 < timings.behindLive,
+    'cancelled chunks stop being read',
+    `${timings.afterCancelling.toFixed(0)} ms after cancelling vs ` +
+      `${timings.behindLive.toFixed(0)} ms behind live requests`,
   );
 }
 
