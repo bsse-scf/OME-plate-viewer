@@ -122,7 +122,7 @@ export function startApp(): void {
     return wrapper;
   }
 
-  /** A compact "6 × 6" when every well was tiled the same way, else a range. */
+  /** A compact "6 × 6" when every well was imaged the same way, else a count. */
   function gridSummary(model: PlateModel): string {
     const shapes = new Set(model.wells.map((well) => `${well.gridRows} × ${well.gridColumns}`));
     return shapes.size === 1 ? [...shapes][0] : `${shapes.size} different grids`;
@@ -135,11 +135,11 @@ export function startApp(): void {
     const imagedPositions = model.plate.rows * model.plate.columns;
     datasetFacts.replaceChildren(
       fact('Wells', `${model.wells.length} of ${imagedPositions}`),
-      fact('Fields per well', gridSummary(model)),
+      fact('Fields of view per well', gridSummary(model)),
       fact('Channels', String(model.sizeC)),
       fact('z planes', String(Math.max(...model.wells.map((well) => well.sizeZ)))),
       fact('Pixel size', `${model.spacing.x.toFixed(3)} µm`),
-      fact('Planes', planeCount(model).toLocaleString()),
+      fact('TIFF planes', planeCount(model).toLocaleString()),
     );
 
     datasetChannels.replaceChildren(
@@ -157,8 +157,9 @@ export function startApp(): void {
     );
 
     plateLegend.textContent =
-      `${plural(model.wells.length, 'well')} imaged, ${plural(fieldCount(model), 'field')} in all. ` +
-      `Click a well to open it. Plate geometry from ${model.plate.source}.`;
+      `${plural(model.wells.length, 'well')} imaged, ` +
+      `${plural(fieldCount(model), 'field of view', 'fields of view')} in all. ` +
+      'Click a well to open it.';
 
     plateMap = renderPlateMap(plateContainer, model, (well) => show([well]));
     datasetSection.hidden = false;
@@ -232,7 +233,9 @@ export function startApp(): void {
     plateMap = null;
     datasetSection.hidden = true;
     closeViewer();
-    setStatus('Dataset closed.', { detail: 'Its virtual OME-Zarr images no longer resolve.' });
+    setStatus('Measurement closed.', {
+      detail: 'Its virtual OME-Zarr plate no longer resolves.',
+    });
   });
 
   /* ------------------------------------------------------------ main flow */
@@ -271,7 +274,7 @@ export function startApp(): void {
         `${plural(model.wells.length, 'well')} ready.`,
         {
           detail:
-            'Each well is served as a virtual OME-Zarr image. Nothing was copied or converted.',
+            'The measurement is served as a virtual OME-Zarr plate. Nothing was copied or converted.',
         },
       );
       renderNotes(model.notes);

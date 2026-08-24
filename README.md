@@ -14,8 +14,8 @@ itself through a Service Worker.
                    │
           read the OME-XML                 src/yokogawa/
                    │
-        each well as a virtual
-          OME-Zarr image                   src/yokogawa/zarr.ts
+       the measurement as a virtual
+          OME-Zarr plate                   src/yokogawa/zarr.ts
                    │
           Service Worker                   src/vfs/
                    │
@@ -55,9 +55,8 @@ directory:
 ```
 20260120T172222_20X_W/
 ├─ 00013603.ome.xml
-├─ Image/
-│  └─ W0014F0001T0001Z001C1.tif …
-└─ 10_Greiner_….wpp
+└─ Image/
+   └─ W0014F0001T0001Z001C1.tif …
 ```
 
 Click a well on the plate map to open it, or open the whole plate at once. A
@@ -70,15 +69,15 @@ single-plane TIFFs — tens of thousands of them, hundreds of gigabytes. Nothing
 reads that directly.
 
 This page reads the XML, works out where every field of view sits, and presents
-each well as a **virtual OME-Zarr image**: metadata generated on demand, chunks
-answered by slicing the TIFFs where they already are. Those TIFFs are
-uncompressed and contiguous, so a plane is already in the layout a Zarr chunk
-wants — serving one is a byte range, not a decode, and serving a reduced one
-only reads the rows it samples.
+the measurement as a **virtual OME-Zarr plate** — `plate / row / column / field
+of view`, as the specification lays a screen out — with metadata generated on
+demand and chunks answered by slicing the TIFFs where they already are. Those
+TIFFs are uncompressed and contiguous, so a plane is already in the layout a
+Zarr chunk wants: serving one is a byte range, not a decode, and serving a
+reduced one only reads the rows it samples.
 
-Each well's metadata carries a `translation` putting it at its real position on
-the plate, taken from the well pitch in the vendor's plate file, so opening
-several wells assembles a plate rather than a pile of images.
+Each well's image carries a `translation` putting it in its place on the plate,
+so opening several wells assembles a plate rather than a pile of images.
 
 `IMPLEMENTATION.md` describes all of it in detail — the grid recovery, the
 pyramid, the chunk pipeline, the worker, and the Neuroglancer state.

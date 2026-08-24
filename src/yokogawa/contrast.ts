@@ -14,7 +14,7 @@
  */
 import { parseDtype } from './chunk';
 import { readRows, readPlaneLayout } from './tiff';
-import type { PlateModel, Tile, Well } from './types';
+import type { Field, PlateModel, Well } from './types';
 import { openDatasetFile } from '../vfs/files';
 
 /** Rows read per plane. Enough for a stable percentile, small enough to be free. */
@@ -48,12 +48,12 @@ const LOW = 0.01;
 const HIGH = 0.99;
 
 /** The fields of view nearest the centre of a well's acquisition grid. */
-function centralTiles(well: Well, count: number): Tile[] {
+function centralFields(well: Well, count: number): Field[] {
   const centreRow = (well.gridRows - 1) / 2;
   const centreColumn = (well.gridColumns - 1) / 2;
-  const distance = (tile: Tile) =>
-    (tile.gridRow - centreRow) ** 2 + (tile.gridColumn - centreColumn) ** 2;
-  return well.tiles
+  const distance = (field: Field) =>
+    (field.gridRow - centreRow) ** 2 + (field.gridColumn - centreColumn) ** 2;
+  return well.fields
     .slice()
     .sort((a, b) => distance(a) - distance(b))
     .slice(0, count);
@@ -147,17 +147,17 @@ export async function estimateContrast(
   // The most densely tiled well is the one most likely to have been imaged
   // properly rather than as a preview.
   const well = model.wells.reduce((best, candidate) =>
-    candidate.tiles.length > best.tiles.length ? candidate : best,
+    candidate.fields.length > best.fields.length ? candidate : best,
   );
-  const tiles = centralTiles(well, SAMPLE_FIELDS);
-  if (tiles.length === 0) return;
+  const fields = centralFields(well, SAMPLE_FIELDS);
+  if (fields.length === 0) return;
 
   for (let channel = 0; channel < model.sizeC; channel += 1) {
     onProgress?.(channel);
 
     const samples: Float64Array[] = [];
-    for (const tile of tiles) {
-      const path = tile.files[channel * tile.sizeZ + Math.floor(tile.sizeZ / 2)];
+    for (const field of fields) {
+      const path = field.files[channel * field.sizeZ + Math.floor(field.sizeZ / 2)];
       if (!path) continue;
       try {
         const file = await openDatasetFile(directory, path);

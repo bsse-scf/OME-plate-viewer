@@ -17,7 +17,7 @@ import { openDatasetFile } from '../src/vfs/files';
 import { readPlaneLayout } from '../src/yokogawa/tiff';
 import { serveZarr } from '../src/vfs/serve';
 import { loadPlateModel } from '../src/yokogawa/model';
-import { levelShape } from '../src/yokogawa/zarr';
+import { imagePath, levelShape } from '../src/yokogawa/zarr';
 import { MODEL_VERSION, type DatasetRecord } from '../src/vfs/protocol';
 import type { PlateModel, Well } from '../src/yokogawa/types';
 import { DEFAULT_FIXTURE, writeFixture } from './fixtures';
@@ -61,7 +61,7 @@ async function levelSamples(
   const z = Math.floor(well.sizeZ / 2);
   for (let gy = 0; gy < well.gridRows; gy += 1) {
     for (let gx = 0; gx < well.gridColumns; gx += 1) {
-      const response = await get(`${well.id}/${level}/0.0.${z}.${gy}.${gx}`);
+      const response = await get(`${imagePath(well)}/${level}/0.0.${z}.${gy}.${gx}`);
       if (response.status !== 200) continue;
       const values = new Uint16Array(await response.arrayBuffer());
       out.set(values, at);

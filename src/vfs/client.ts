@@ -3,6 +3,8 @@
  * builds the URLs it answers.
  */
 import { namespacePrefix, ZARR_SEGMENT, type PortalMessage } from './protocol';
+import { imagePath } from '../yokogawa/zarr';
+import type { Well } from '../yokogawa/types';
 
 export class ServiceWorkerUnavailableError extends Error {}
 
@@ -89,16 +91,18 @@ function encodePath(path: string): string {
   return path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
 }
 
-/**
- * Absolute URL of a well's virtual OME-Zarr image, with a trailing slash —
- * the form Zarr data sources expect.
- */
-export function wellUrl(datasetId: string, wellId: string): string {
+/** Absolute URL of the virtual OME-Zarr plate, with a trailing slash. */
+export function plateUrl(datasetId: string): string {
   const prefix = namespacePrefix(getBasePath(), ZARR_SEGMENT);
-  return new URL(
-    `${prefix}${encodeURIComponent(datasetId)}/${encodePath(wellId)}/`,
-    location.origin,
-  ).href;
+  return new URL(`${prefix}${encodeURIComponent(datasetId)}/`, location.origin).href;
+}
+
+/**
+ * Absolute URL of one well's image inside the plate — `…/B/2/0/` — with a
+ * trailing slash, the form Zarr data sources expect.
+ */
+export function imageUrl(datasetId: string, well: Well): string {
+  return `${plateUrl(datasetId)}${encodePath(imagePath(well))}/`;
 }
 
 /** Absolute URL for a page shipped alongside this one, e.g. `neuroglancer/`. */

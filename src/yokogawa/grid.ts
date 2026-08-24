@@ -8,24 +8,24 @@
  *
  * The step, not the field of view, becomes the chunk size: cropping each field
  * to the step makes neighbours abut exactly, which is what lets a whole well be
- * a single chunked array with one field per chunk and no stitching.
+ * a single chunked image with one field of view per chunk and no stitching.
  */
 
 /**
  * Cluster one-dimensional pixel offsets into 0-based grid-line indices.
  *
  * Sorting the offsets and starting a new line whenever the gap to the previous
- * one exceeds half a cell yields one index per field. Robust for overlaps
- * below ~50 %, which covers every acquisition this instrument produces.
+ * one exceeds half a field of view yields one index per field. Robust for
+ * overlaps below ~50 %, which covers every acquisition this instrument makes.
  */
-export function gridIndices(offsets: number[], cellSize: number): number[] {
+export function gridIndices(offsets: number[], fieldSize: number): number[] {
   if (offsets.length === 0) return [];
   const order = offsets.map((_, index) => index).sort((a, b) => offsets[a] - offsets[b]);
   const indices = new Array<number>(offsets.length).fill(0);
   let line = 0;
   let previous = offsets[order[0]];
   for (const index of order) {
-    if (offsets[index] - previous > cellSize / 2) line += 1;
+    if (offsets[index] - previous > fieldSize / 2) line += 1;
     indices[index] = line;
     previous = offsets[index];
   }

@@ -62,9 +62,25 @@ test('serves the group and array metadata Neuroglancer asks for', async (t) => {
   const { get, cleanup } = await mount();
   t.after(cleanup);
 
-  assert.deepEqual(await (await get('abc123/A1/.zgroup')).json(), { zarr_format: 2 });
+  // The plate, its rows and its wells, the way OME-Zarr lays a screen out.
+  const plate = (await (await get('abc123/.zattrs')).json()) as {
+    plate: { rows: { name: string }[]; columns: { name: string }[]; wells: unknown[] };
+  };
+  assert.equal(plate.plate.rows.length, 8);
+  assert.equal(plate.plate.columns.length, 12);
+  assert.deepEqual(plate.plate.wells, [
+    { path: 'A/1', rowIndex: 0, columnIndex: 0 },
+    { path: 'A/3', rowIndex: 0, columnIndex: 2 },
+    { path: 'B/3', rowIndex: 1, columnIndex: 2 },
+  ]);
+  assert.deepEqual(await (await get('abc123/A/.zgroup')).json(), { zarr_format: 2 });
+  assert.deepEqual(await (await get('abc123/A/1/.zattrs')).json(), {
+    well: { version: '0.4', images: [{ path: '0' }] },
+  });
 
-  const attributes = (await (await get('abc123/A1/.zattrs')).json()) as {
+  assert.deepEqual(await (await get('abc123/A/1/0/.zgroup')).json(), { zarr_format: 2 });
+
+  const attributes = (await (await get('abc123/A/1/0/.zattrs')).json()) as {
     multiscales: { version: string; axes: { name: string }[]; datasets: unknown[] }[];
   };
   assert.equal(attributes.multiscales[0].version, '0.4');
@@ -73,14 +89,14 @@ test('serves the group and array metadata Neuroglancer asks for', async (t) => {
     ['t', 'c', 'z', 'y', 'x'],
   );
 
-  const array = (await (await get('abc123/A1/0/.zarray')).json()) as Record<string, unknown>;
+  const array = (await (await get('abc123/A/1/0/0/.zarray')).json()) as Record<string, unknown>;
   assert.deepEqual(array.shape, [1, 2, 3, 96, 96]);
   assert.deepEqual(array.chunks, [1, 1, 1, 48, 48]);
   assert.equal(array.dtype, '<u2');
   assert.equal(array.compressor, null);
   assert.equal(array.dimension_separator, '.');
 
-  assert.deepEqual(await (await get('abc123/A1/0/.zattrs')).json(), {
+  assert.deepEqual(await (await get('abc123/A/1/0/0/.zattrs')).json(), {
     _ARRAY_DIMENSIONS: ['t', 'c', 'z', 'y', 'x'],
   });
 });
@@ -90,7 +106,7 @@ test('a full-resolution chunk is the field of view, overlap trimmed', async (t) 
   t.after(cleanup);
 
   // Well A1, channel 1, z 2, grid cell (1, 0) -> the third field written.
-  const response = await get('abc123/A1/0/0.1.2.1.0');
+  const response = await get('abc123/A/1/0/0/0.1.2.1.0');
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('Content-Length'), String(48 * 48 * 2));
 
@@ -105,7 +121,7 @@ test('a reduced chunk is the mean of the block it covers', async (t) => {
   const { get, cleanup } = await mount();
   t.after(cleanup);
 
-  const values = await samples(await get('abc123/A1/1/0.0.0.0.0'));
+  const values = await samples(await get('abc123/A/1/0/1/0.0.0.0.0'));
   assert.equal(values.length, 24 * 24);
 
   const inset = (DEFAULT_FIXTURE.field - DEFAULT_FIXTURE.stride) / 2;
@@ -124,45 +140,46 @@ test('a well with one field is served straight from the file', async (t) => {
   const { get, dataset, cleanup } = await mount();
   t.after(cleanup);
 
-  const response = await get('abc123/B3/0/0.0.1.0.0');
+  const response = await get('abc123/B/3/0/0/0.0.1.0.0');
   assert.equal(response.status, 200);
 
   // No trimming and no reduction, so the chunk *is* the plane: the reader
   // should take the zero-copy decision rather than resampling it.
   const well = dataset.model.wells.find((candidate: { id: string }) => candidate.id === 'B3')!;
-  const tile = well.tiles[0];
-  const plane = (await openDatasetFile(dataset.handle, tile.files[1]))!;
+  const field = well.fields[0];
+  const plane = (await openDatasetFile(dataset.handle, field.files[1]))!;
   const layout = await readPlaneLayout(plane);
   assert.ok(
     passthroughRange(layout, {
-      cellY: well.cellY, cellX: well.cellX,
-      fieldY: tile.sizeY, fieldX: tile.sizeX,
-      outY: well.cellY, outX: well.cellX,
+      strideY: well.strideY, strideX: well.strideX,
+      fieldY: field.sizeY, fieldX: field.sizeX,
+      outY: well.strideY, outX: well.strideX,
     }, dataset.model.dtype),
     'a full-resolution chunk of an untrimmed field should be a byte range',
   );
 
   const values = await samples(response);
   assert.equal(values.length, DEFAULT_FIXTURE.field ** 2);
-  assert.equal(values[0], pixelValue(1, 0, 0, 1, 0, 0));
-  assert.equal(values[63 * 64 + 63], pixelValue(1, 0, 0, 1, 63, 63));
+  // B3 is the third well the fixture writes.
+  assert.equal(values[0], pixelValue(2, 0, 0, 1, 0, 0));
+  assert.equal(values[63 * 64 + 63], pixelValue(2, 0, 0, 1, 63, 63));
 });
 
 test('honours HEAD and byte ranges', async (t) => {
   const { get, cleanup } = await mount();
   t.after(cleanup);
 
-  const head = await get('abc123/A1/0/0.0.0.0.0', { method: 'HEAD' });
+  const head = await get('abc123/A/1/0/0/0.0.0.0.0', { method: 'HEAD' });
   assert.equal(head.status, 200);
   assert.equal(head.headers.get('Content-Length'), String(48 * 48 * 2));
   assert.equal((await head.arrayBuffer()).byteLength, 0);
 
-  const partial = await get('abc123/A1/0/0.0.0.0.0', { headers: { Range: 'bytes=0-15' } });
+  const partial = await get('abc123/A/1/0/0/0.0.0.0.0', { headers: { Range: 'bytes=0-15' } });
   assert.equal(partial.status, 206);
   assert.equal(partial.headers.get('Content-Range'), `bytes 0-15/${48 * 48 * 2}`);
   assert.equal((await partial.arrayBuffer()).byteLength, 16);
 
-  const beyond = await get('abc123/A1/0/0.0.0.0.0', { headers: { Range: 'bytes=99999-' } });
+  const beyond = await get('abc123/A/1/0/0/0.0.0.0.0', { headers: { Range: 'bytes=99999-' } });
   assert.equal(beyond.status, 416);
 });
 
@@ -171,17 +188,17 @@ test('misses are honest and never leak outside the dataset', async (t) => {
   t.after(cleanup);
 
   assert.equal((await get('nosuch/A1/.zattrs')).status, 404);
-  assert.equal((await get('abc123/Z9/.zattrs')).status, 404);
+  assert.equal((await get('abc123/Z/9/0/.zattrs')).status, 404);
   // Level 3 does not exist: the chunk would be smaller than the pyramid floor.
-  assert.equal((await get('abc123/A1/3/.zarray')).status, 404);
+  assert.equal((await get('abc123/A/1/0/3/.zarray')).status, 404);
   // Outside the array's chunk grid.
-  assert.equal((await get('abc123/A1/0/0.0.0.9.0')).status, 404);
+  assert.equal((await get('abc123/A/1/0/0/0.0.0.9.0')).status, 404);
   // A gap in the grid reads as the fill value, which Zarr spells "not found".
-  assert.equal((await get('abc123/B3/0/0.0.0.0.0')).status, 200);
+  assert.equal((await get('abc123/B/3/0/0/0.0.0.0.0')).status, 200);
   // An encoded separator survives URL normalisation, so the path parser is
   // what has to reject it — before any handle is touched.
-  assert.equal((await get('abc123/A1/%2Fetc%2Fpasswd')).status, 400);
-  assert.equal((await get('abc123/A1/.zattrs', { method: 'POST' })).status, 405);
+  assert.equal((await get('abc123/A/1/0/%2Fetc%2Fpasswd')).status, 400);
+  assert.equal((await get('abc123/A/1/0/.zattrs', { method: 'POST' })).status, 405);
 });
 
 test('the path parser refuses anything that could escape the folder', () => {
@@ -204,13 +221,13 @@ test('the plate assembles into one coordinate system', async (t) => {
 
   // The physical centre of a well's array, straight out of the metadata a
   // viewer reads: corner plus half the extent.
-  const centre = async (well: string): Promise<number[]> => {
-    const attributes = (await (await get(`abc123/${well}/.zattrs`)).json()) as {
+  const centre = async (image: string): Promise<number[]> => {
+    const attributes = (await (await get(`abc123/${image}/.zattrs`)).json()) as {
       multiscales: {
         datasets: { coordinateTransformations: [{ scale: number[] }, { translation: number[] }] }[];
       }[];
     };
-    const array = (await (await get(`abc123/${well}/0/.zarray`)).json()) as { shape: number[] };
+    const array = (await (await get(`abc123/${image}/0/.zarray`)).json()) as { shape: number[] };
     const [{ scale }, { translation }] =
       attributes.multiscales[0].datasets[0].coordinateTransformations;
     return translation.map(
@@ -218,7 +235,8 @@ test('the plate assembles into one coordinate system', async (t) => {
     );
   };
 
-  const [a1, b3] = await Promise.all([centre('A1'), centre('B3')]);
-  assert.ok(Math.abs(b3[4] - a1[4] - 2 * 200) < 1e-6); // two columns of pitch
-  assert.ok(Math.abs(b3[3] - a1[3] - 1 * 200) < 1e-6); // one row
+  const [a1, a3] = await Promise.all([centre('A/1/0'), centre('A/3/0')]);
+  // Two columns apart, at the layout's own pitch of 72 µm.
+  assert.ok(Math.abs(a3[4] - a1[4] - 2 * 72) < 1e-6);
+  assert.ok(Math.abs(a3[3] - a1[3]) < 1e-6);
 });

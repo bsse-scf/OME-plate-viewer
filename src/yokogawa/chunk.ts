@@ -22,8 +22,8 @@ import { readRows, rowRanges, type PlaneLayout } from './tiff';
 /** How the chunk sits inside its field of view, and how far it is reduced. */
 export interface ChunkGeometry {
   /** Level-0 chunk extent: the acquisition stride, in pixels. */
-  cellY: number;
-  cellX: number;
+  strideY: number;
+  strideX: number;
   /** Declared field-of-view extent, which fixes where the crop starts. */
   fieldY: number;
   fieldX: number;
@@ -78,8 +78,8 @@ function spanning(blocks: { firstRow: number; rows: number }[]) {
 }
 
 /** Where the crop starts inside a field of view, centred on it. */
-function inset(field: number, cell: number, available: number): number {
-  return Math.max(0, Math.min(Math.floor((field - cell) / 2), Math.max(0, available - cell)));
+function inset(field: number, stride: number, available: number): number {
+  return Math.max(0, Math.min(Math.floor((field - stride) / 2), Math.max(0, available - stride)));
 }
 
 /**
@@ -169,10 +169,10 @@ function writer(format: SampleFormat): (view: DataView, index: number, value: nu
  * closely enough to serve as a budget, which is all it is.
  */
 export function workingSetBytes(geometry: ChunkGeometry, bytesPerSample: number): number {
-  const scaleY = geometry.cellY / geometry.outY;
+  const scaleY = geometry.strideY / geometry.outY;
   const rowsPerSample = Math.max(1, Math.min(MAX_ROWS_PER_SAMPLE, Math.floor(scaleY)));
   const sampled = geometry.outY * rowsPerSample;
-  const rows = sampled >= geometry.cellY * READ_WHOLE_FRACTION ? geometry.cellY : sampled;
+  const rows = sampled >= geometry.strideY * READ_WHOLE_FRACTION ? geometry.strideY : sampled;
   return rows * geometry.fieldX * bytesPerSample + geometry.outY * geometry.outX * bytesPerSample;
 }
 
@@ -192,8 +192,8 @@ export function passthroughRange(
   const format = parseDtype(dtype);
   if (format.bytes !== layout.bytesPerSample) return null;
   if (format.littleEndian !== layout.littleEndian && format.bytes > 1) return null;
-  if (geometry.outY !== geometry.cellY || geometry.outX !== geometry.cellX) return null;
-  if (geometry.cellY !== layout.height || geometry.cellX !== layout.width) return null;
+  if (geometry.outY !== geometry.strideY || geometry.outX !== geometry.strideX) return null;
+  if (geometry.strideY !== layout.height || geometry.strideX !== layout.width) return null;
 
   const ranges = rowRanges(layout, 0, layout.height);
   if (ranges.length !== 1) return null;
@@ -220,12 +220,12 @@ export async function materialiseChunk(
     littleEndian: layout.littleEndian,
   };
 
-  const insetY = inset(geometry.fieldY, geometry.cellY, layout.height);
-  const insetX = inset(geometry.fieldX, geometry.cellX, layout.width);
-  const rowEdges = edges(insetY, geometry.cellY, geometry.outY, layout.height);
-  const columnEdges = edges(insetX, geometry.cellX, geometry.outX, layout.width);
+  const insetY = inset(geometry.fieldY, geometry.strideY, layout.height);
+  const insetX = inset(geometry.fieldX, geometry.strideX, layout.width);
+  const rowEdges = edges(insetY, geometry.strideY, geometry.outY, layout.height);
+  const columnEdges = edges(insetX, geometry.strideX, geometry.outX, layout.width);
 
-  const scaleY = geometry.cellY / geometry.outY;
+  const scaleY = geometry.strideY / geometry.outY;
   const rowsPerSample = Math.max(1, Math.min(MAX_ROWS_PER_SAMPLE, Math.floor(scaleY)));
 
   const blocks: { firstRow: number; rows: number }[] = [];
@@ -255,8 +255,8 @@ export async function materialiseChunk(
   // Level 0 with no reduction: each output row is a contiguous run of the
   // source row, so copy it rather than walking pixel by pixel.
   const straightCopy =
-    geometry.outY === geometry.cellY &&
-    geometry.outX === geometry.cellX &&
+    geometry.outY === geometry.strideY &&
+    geometry.outX === geometry.strideX &&
     target.bytes === source.bytes &&
     target.littleEndian === source.littleEndian;
 

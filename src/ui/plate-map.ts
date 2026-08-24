@@ -66,9 +66,9 @@ export function renderPlateMap(
       button.type = 'button';
       button.className = 'well is-imaged';
       button.textContent = labelled ? well.id : '';
-      button.title = `${well.id} — ${well.tiles.length} field${
-        well.tiles.length === 1 ? '' : 's'
-      }, ${well.sizeZ} z plane${well.sizeZ === 1 ? '' : 's'}`;
+      button.title = `${well.id} — ${well.fields.length} field${
+        well.fields.length === 1 ? '' : 's'
+      } of view, ${well.sizeZ} z plane${well.sizeZ === 1 ? '' : 's'}`;
       button.setAttribute('aria-label', `Open well ${well.id}`);
       button.addEventListener('click', () => onSelect(well));
       buttons.set(well.id, button);

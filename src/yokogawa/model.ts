@@ -11,8 +11,8 @@
  */
 import { gridIndices, gridStride } from './grid';
 import { findMetadataFile, parseOmeXml, type OmeDataset, type OmeImage } from './ome-xml';
-import { derivedGeometry, readPlateGeometry, standardGeometry, wellCentre, wellName } from './plate';
-import type { ChannelInfo, PlateModel, PlateGeometry, Tile, Well } from './types';
+import { wellName } from './plate';
+import type { ChannelInfo, Field, PlateModel, PlateGeometry, Well } from './types';
 
 /**
  * Stop adding resolution levels once a chunk would be smaller than this.
@@ -27,6 +27,9 @@ const MIN_CHUNK_EXTENT = 8;
 
 /** Hard ceiling on the pyramid, so a pathological stride cannot run away. */
 const MAX_LEVELS = 9;
+
+/** Empty space left between wells, as a fraction of the widest well. */
+const WELL_GAP = 0.5;
 
 /** OME pixel type to Zarr v2 dtype. TIFF planes are always little-endian here. */
 const DTYPES: Record<string, { dtype: string; bytes: number }> = {
@@ -57,21 +60,21 @@ function defaultWindow(omeType: string): { start: number; end: number; min: numb
 }
 
 /** How many resolution levels a chunk of this size supports. */
-export function levelCount(cellY: number, cellX: number): number {
+export function levelCount(strideY: number, strideX: number): number {
   let levels = 1;
   while (
     levels < MAX_LEVELS &&
-    Math.ceil(cellY / 2 ** levels) >= MIN_CHUNK_EXTENT &&
-    Math.ceil(cellX / 2 ** levels) >= MIN_CHUNK_EXTENT
+    Math.ceil(strideY / 2 ** levels) >= MIN_CHUNK_EXTENT &&
+    Math.ceil(strideX / 2 ** levels) >= MIN_CHUNK_EXTENT
   ) {
     levels += 1;
   }
   return levels;
 }
 
-/** Chunk extent at a level: the level-0 cell halved once per level. */
-export function levelExtent(cell: number, level: number): number {
-  return Math.max(1, Math.ceil(cell / 2 ** level));
+/** Chunk extent at a level: the level-0 stride halved once per level. */
+export function levelExtent(stride: number, level: number): number {
+  return Math.max(1, Math.ceil(stride / 2 ** level));
 }
 
 /**
@@ -98,15 +101,14 @@ function buildWell(
   column: number,
   images: OmeImage[],
   spacing: { z: number; y: number; x: number },
-  geometry: PlateGeometry,
   notes: string[],
 ): Well {
   const fieldY = Math.max(...images.map((image) => image.sizeY));
   const fieldX = Math.max(...images.map((image) => image.sizeX));
 
-  // Overlap-accurate pixel offsets, used only to recover the grid — the tiles
+  // Overlap-accurate pixel offsets, used only to recover the grid — the fields
   // are then placed on the grid itself, so a wobbling stage cannot shear the
-  // montage.
+  // mosaic.
   const originStage = {
     z: Math.min(...images.map((image) => image.position.z)),
     y: Math.min(...images.map((image) => image.position.y)),
@@ -117,10 +119,10 @@ function buildWell(
 
   const rowIndices = gridIndices(offsetsY, fieldY);
   const columnIndices = gridIndices(offsetsX, fieldX);
-  const cellY = Math.min(gridStride(offsetsY, rowIndices, fieldY), fieldY);
-  const cellX = Math.min(gridStride(offsetsX, columnIndices, fieldX), fieldX);
+  const strideY = Math.min(gridStride(offsetsY, rowIndices, fieldY), fieldY);
+  const strideX = Math.min(gridStride(offsetsX, columnIndices, fieldX), fieldX);
 
-  const tiles: Tile[] = images.map((image, index) => ({
+  const fields: Field[] = images.map((image, index) => ({
     gridRow: rowIndices[index],
     gridColumn: columnIndices[index],
     zOffset: Math.max(0, Math.round((image.position.z - originStage.z) / spacing.z)),
@@ -130,19 +132,19 @@ function buildWell(
     files: image.files,
   }));
 
-  const occupied = new Set(tiles.map((tile) => `${tile.gridRow}/${tile.gridColumn}`));
-  if (occupied.size !== tiles.length) {
+  const occupied = new Set(fields.map((field) => `${field.gridRow}/${field.gridColumn}`));
+  if (occupied.size !== fields.length) {
     notes.push(
-      `Well ${wellName(row, column)}: two fields of view landed on the same grid ` +
-        'cell, so some of them are not shown.',
+      `Well ${wellName(row, column)}: two fields of view landed on the same place ` +
+        'in the acquisition grid, so some of them are not shown.',
     );
   }
 
-  // Trimming the overlap removes the same margin from every side, so the array
-  // starts half an overlap inside the first field of view.
-  const centre = wellCentre(geometry, row, column);
-  const insetY = Math.floor((fieldY - cellY) / 2);
-  const insetX = Math.floor((fieldX - cellX) / 2);
+  // Trimming the overlap removes the same margin from every side, so the image
+  // starts half an overlap inside the first field of view. Stage positions name
+  // the centre of a field, and the image starts at its top-left corner.
+  const insetY = Math.floor((fieldY - strideY) / 2);
+  const insetX = Math.floor((fieldX - strideX) / 2);
 
   return {
     id: wellName(row, column),
@@ -150,30 +152,61 @@ function buildWell(
     column,
     gridRows: Math.max(...rowIndices) + 1,
     gridColumns: Math.max(...columnIndices) + 1,
-    cellY,
-    cellX,
-    sizeZ: Math.max(...tiles.map((tile) => tile.zOffset + tile.sizeZ)),
+    strideY,
+    strideX,
+    sizeZ: Math.max(...fields.map((field) => field.zOffset + field.sizeZ)),
+    // Relative to the well's own stage origin for now; `layOutPlate` turns
+    // these into plate coordinates once every well's extent is known.
     origin: {
       z: originStage.z,
-      // Stage positions name the centre of a field of view; the array starts at
-      // its top-left corner, half a field away, plus the trimmed margin.
-      y: centre.y + originStage.y - (fieldY / 2 - insetY) * spacing.y,
-      x: centre.x + originStage.x - (fieldX / 2 - insetX) * spacing.x,
+      y: originStage.y - (fieldY / 2 - insetY) * spacing.y,
+      x: originStage.x - (fieldX / 2 - insetX) * spacing.x,
     },
-    levels: levelCount(cellY, cellX),
-    tiles,
+    levels: levelCount(strideY, strideX),
+    fields,
   };
 }
 
 /**
- * Turn a parsed OME-XML document plus plate geometry into a {@link PlateModel}.
+ * Space the wells out on a common coordinate system.
+ *
+ * Not at their physical pitch. A 9 mm well spaced by its own 2.7 mm of imaged
+ * area would put two thirds of a plate view on empty plastic, and the point of
+ * looking at a whole plate is to compare the wells, not to measure the gaps
+ * between them. So the pitch is the widest well plus half again, which keeps
+ * the wells apart, keeps the plate reading as a plate, and keeps the eye on the
+ * data. Everything inside a well stays exactly where the stage put it.
+ */
+function layOutPlate(wells: Well[], spacing: { y: number; x: number }): void {
+  const extent = (well: Well) => ({
+    y: well.gridRows * well.strideY * spacing.y,
+    x: well.gridColumns * well.strideX * spacing.x,
+  });
+
+  const widest = Math.max(...wells.flatMap((well) => [extent(well).y, extent(well).x]));
+  const pitch = widest * (1 + WELL_GAP);
+
+  // Wells share an acquisition pattern, so aligning their images by their own
+  // lowest corner keeps them consistent with one another.
+  const lowest = {
+    y: Math.min(...wells.map((well) => well.origin.y)),
+    x: Math.min(...wells.map((well) => well.origin.x)),
+  };
+  for (const well of wells) {
+    well.origin.y = well.origin.y - lowest.y + well.row * pitch;
+    well.origin.x = well.origin.x - lowest.x + well.column * pitch;
+  }
+}
+
+/**
+ * Turn a parsed OME-XML document into a {@link PlateModel}.
  *
  * Split out from {@link loadPlateModel} so it can be exercised without a
  * filesystem.
  */
 export function buildPlateModel(
   dataset: OmeDataset,
-  options: { folder: string; metadataFile: string; geometry: PlateGeometry },
+  options: { folder: string; metadataFile: string },
 ): PlateModel {
   const notes = [...dataset.notes];
   const first = dataset.images.get(dataset.wells[0].imageIds[0]);
@@ -212,10 +245,16 @@ export function buildPlateModel(
     const usable = images.filter((image) => !mismatched.includes(image));
     if (usable.length === 0) continue;
 
-    wells.push(buildWell(well.row, well.column, usable, spacing, options.geometry, notes));
+    wells.push(buildWell(well.row, well.column, usable, spacing, notes));
   }
 
   if (wells.length === 0) throw new Error('No well in this dataset could be read.');
+  layOutPlate(wells, spacing);
+
+  const plate: PlateGeometry = {
+    rows: dataset.plateRows || Math.max(...wells.map((well) => well.row)) + 1,
+    columns: dataset.plateColumns || Math.max(...wells.map((well) => well.column)) + 1,
+  };
 
   const channels: ChannelInfo[] = Array.from({ length: first.sizeC }, (_, index) => {
     const declared = dataset.channels[index];
@@ -238,7 +277,7 @@ export function buildPlateModel(
     sizeC: first.sizeC,
     channels,
     spacing,
-    plate: options.geometry,
+    plate,
     wells,
     notes,
   };
@@ -265,33 +304,5 @@ export async function loadPlateModel(
   onProgress?.('Parsing the plate description…');
   const dataset = parseOmeXml(xml);
 
-  onProgress?.('Reading the plate geometry…');
-  const rows = dataset.plateRows || Math.max(...dataset.wells.map((w) => w.row)) + 1;
-  const columns = dataset.plateColumns || Math.max(...dataset.wells.map((w) => w.column)) + 1;
-  const geometry =
-    (await readPlateGeometry(directory, rows, columns)) ??
-    standardGeometry(rows, columns) ??
-    derivedGeometry(rows, columns, estimateWellExtentMm(dataset));
-
-  onProgress?.('Building the virtual OME-Zarr plate…');
-  return buildPlateModel(dataset, { folder: directory.name, metadataFile, geometry });
-}
-
-/** Widest imaged extent of any well, in millimetres — the last-resort pitch. */
-function estimateWellExtentMm(dataset: OmeDataset): number {
-  let extent = 0;
-  for (const well of dataset.wells) {
-    const images = well.imageIds
-      .map((id) => dataset.images.get(id))
-      .filter((image): image is OmeImage => image !== undefined);
-    if (images.length === 0) continue;
-    const span = (axis: 'x' | 'y') => {
-      const positions = images.map((image) => image.position[axis]);
-      const size = Math.max(...images.map((image) => (axis === 'x' ? image.sizeX : image.sizeY)));
-      const spacing = images[0].spacing[axis];
-      return Math.max(...positions) - Math.min(...positions) + size * spacing;
-    };
-    extent = Math.max(extent, span('x'), span('y'));
-  }
-  return extent / 1000;
+  return buildPlateModel(dataset, { folder: directory.name, metadataFile });
 }

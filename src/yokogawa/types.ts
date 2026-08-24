@@ -28,16 +28,17 @@ export interface ChannelInfo {
 }
 
 /**
- * One field of view: a rectangular stack of single-plane TIFF files that all
- * share a stage position.
+ * One field of view: a stack of single-plane TIFF files sharing a stage
+ * position. "Field of view" is the OME-Zarr term for what an acquisition puts
+ * inside a well.
  */
-export interface Tile {
-  /** Position in the well's acquisition grid, inferred from stage positions. */
+export interface Field {
+  /** Place in the well's acquisition grid, inferred from stage positions. */
   gridRow: number;
   gridColumn: number;
-  /** Index of this tile's first z plane within the well array. */
+  /** Index of this field's first z plane within the well image. */
   zOffset: number;
-  /** Number of z planes in this tile. */
+  /** Number of z planes in this field. */
   sizeZ: number;
   /** Pixel size of the field of view, before the overlap is trimmed. */
   sizeY: number;
@@ -49,23 +50,30 @@ export interface Tile {
   files: string[];
 }
 
-/** One well: a regular grid of fields of view exposed as a single array. */
+/**
+ * One well, exposed as a single image assembled from its fields of view.
+ *
+ * OME-Zarr places a well at `<row>/<column>` and its fields of view beneath it.
+ * The fields here are assembled into one image rather than published
+ * separately, so that a viewer opens a well as one source instead of thirty-six
+ * — see `zarr.ts`.
+ */
 export interface Well {
-  /** Human-readable well name, e.g. `B2`. Also the virtual image's folder. */
+  /** Well name in the usual `B2` form, for display. */
   id: string;
-  /** Zero-based position on the physical plate. */
+  /** Zero-based place on the plate. `row` 1, `column` 1 is well `B2`. */
   row: number;
   column: number;
   /** Shape of the acquisition grid, in fields of view. */
   gridRows: number;
   gridColumns: number;
   /**
-   * Level-0 chunk size in pixels — the grid stride, i.e. the field of view
-   * minus the acquisition overlap. Each chunk holds exactly one field of view,
+   * Level-0 chunk size in pixels — the acquisition stride, i.e. the field of
+   * view minus its overlap. Each chunk holds exactly one field of view,
    * centre-cropped to this size so neighbours abut instead of overlapping.
    */
-  cellY: number;
-  cellX: number;
+  strideY: number;
+  strideX: number;
   /** Number of z planes spanned by the whole well. */
   sizeZ: number;
   /**
@@ -75,20 +83,13 @@ export interface Well {
   origin: { z: number; y: number; x: number };
   /** Number of resolution levels; level *k* is downsampled by 2^k in y and x. */
   levels: number;
-  tiles: Tile[];
+  fields: Field[];
 }
 
-/** Physical plate geometry, in millimetres, as read from the vendor metadata. */
+/** Shape of the plate: how many rows and columns of wells it has. */
 export interface PlateGeometry {
   rows: number;
   columns: number;
-  rowPitch: number;
-  columnPitch: number;
-  /** Distance from the plate's left/top edge to the centre of well A1. */
-  leftMargin: number;
-  topMargin: number;
-  /** Where the numbers came from, for the About panel and the notes list. */
-  source: string;
 }
 
 /** A parsed Yokogawa CQ3000 dataset. */
@@ -115,13 +116,13 @@ export interface PlateModel {
 
 /** Total number of fields of view across the plate. */
 export function fieldCount(model: PlateModel): number {
-  return model.wells.reduce((total, well) => total + well.tiles.length, 0);
+  return model.wells.reduce((total, well) => total + well.fields.length, 0);
 }
 
 /** Total number of TIFF planes the model refers to. */
 export function planeCount(model: PlateModel): number {
   return model.wells.reduce(
-    (total, well) => total + well.tiles.reduce((n, tile) => n + tile.files.length, 0),
+    (total, well) => total + well.fields.reduce((n, field) => n + field.files.length, 0),
     0,
   );
 }

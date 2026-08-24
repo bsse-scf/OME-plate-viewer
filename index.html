@@ -20,8 +20,8 @@
           </button>
         </div>
         <p class="tagline">
-          Drop a CQ3000 measurement folder to browse the plate in Neuroglancer — wells
-          stitched, channels coloured, in place on the plate.
+          Drop a CQ3000 measurement folder to browse the plate in Neuroglancer — fields
+          of view assembled into wells, channels coloured, wells in place on the plate.
         </p>
         <p class="assurance">
           Data is not uploaded to remote servers and stays on the local machine. Nothing
@@ -55,7 +55,7 @@
         <section id="dataset" class="dataset" hidden>
           <div class="dataset-head">
             <h2 id="dataset-name"></h2>
-            <button type="button" id="close-dataset" class="link-button">Close dataset</button>
+            <button type="button" id="close-dataset" class="link-button">Close measurement</button>
           </div>
           <dl class="facts" id="dataset-facts"></dl>
           <div class="channel-swatches" id="dataset-channels"></div>
@@ -127,16 +127,24 @@
         </p>
         <p>
           This page reads the XML, works out where every field of view sits, and presents
-          each well as a <strong>virtual OME-Zarr image</strong>: metadata generated on
-          demand, chunks answered by slicing the TIFFs where they already are. A Service
-          Worker serves those images over ordinary same-origin HTTP, and Neuroglancer
-          opens them like any other OME-Zarr.
+          the measurement as a <strong>virtual OME-Zarr plate</strong>: metadata generated
+          on demand, chunks answered by slicing the TIFFs where they already are. A
+          Service Worker serves it over ordinary same-origin HTTP, and Neuroglancer opens
+          it like any other OME-Zarr.
         </p>
         <pre class="about-tree">20251027T134435_10X/     the folder you drop
 ├─ 00013515.ome.xml      what gets read
-├─ Image/                stays exactly where it is
-│  └─ W0001F0001T0001Z001C1.tif …
-└─ 35_….wpp              plate geometry</pre>
+└─ Image/                stays exactly where it is
+   └─ W0001F0001T0001Z001C1.tif …</pre>
+        <p>
+          What comes out is an OME-Zarr plate laid out as the specification says: a row
+          group, a column group, and the well's image inside it.
+        </p>
+        <pre class="about-tree">A/                       row A
+└─ 1/                    column 1, i.e. well A1
+   └─ 0/                 the well's image
+      ├─ 0/              full resolution
+      └─ 1/ …            reduced resolutions</pre>
         <p>
           Nothing is uploaded, nothing is converted and nothing is written. Close the tab
           and every trace of it is gone.
@@ -147,27 +155,28 @@
         <h3>How the plate is put together</h3>
         <ul>
           <li>
-            <strong>Fields into wells</strong> — the stage positions of a well's fields
-            are clustered back onto their acquisition grid, and each field is cropped to
-            the grid step so neighbours abut. One field is one chunk; nothing is blended
-            and no pixel is resampled at full resolution.
+            <strong>Fields of view into wells</strong> — the stage positions of a well's
+            fields are clustered back onto their acquisition grid, and each is cropped to
+            the grid step so neighbours abut. One field of view is one chunk; nothing is
+            blended and no pixel is resampled at full resolution.
           </li>
           <li>
-            <strong>Wells onto the plate</strong> — each virtual image carries a
-            <code>translation</code> putting it at its real position on the plate, taken
-            from the well pitch in the vendor's plate file. Opening several wells at once
-            assembles them into one plate.
+            <strong>Wells onto the plate</strong> — each well's image carries a
+            <code>translation</code> putting it in its place on the plate, spaced by the
+            widest well plus half again rather than by the millimetres of plastic a real
+            plate would put between them. Opening several wells at once assembles them
+            into one plate.
           </li>
           <li>
             <strong>Coarser levels</strong> — every image also offers reduced resolutions,
             built by sampling rows and averaging columns, so a plate overview reads a
             fraction of the data instead of all of it. Averaging keeps the exposure the
-            same at every zoom, so one contrast setting holds from a single cell to the
-            whole plate.
+            same at every zoom, so one contrast setting holds from a single nucleus to
+            the whole plate.
           </li>
           <li>
-            <strong>Channels</strong> — colours, names and display ranges come from the
-            acquisition's own metadata, so Neuroglancer opens one additive layer per
+            <strong>Channels</strong> — colours, names and display ranges are written as
+            <code>omero</code> metadata, so Neuroglancer opens one additive layer per
             channel with the right colour already set.
           </li>
         </ul>
@@ -213,7 +222,7 @@
             <a href="https://ngff.openmicroscopy.org/" target="_blank" rel="noopener">
               The OME-Zarr specification
             </a>
-            <span>The format the wells are presented as.</span>
+            <span>The format, including how it lays out a plate.</span>
           </li>
           <li>
             <a href="https://github.com/google/neuroglancer" target="_blank" rel="noopener">

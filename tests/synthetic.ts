@@ -48,8 +48,11 @@ export const DEFAULT_FIXTURE: FixtureOptions = {
   spacing: 0.5,
   zStep: 2,
   zOrigin: 0,
+  // Two wells in one row with a gap between them, and a third on the next row
+  // with a single field of view — enough shape to pin the plate layout.
   wells: [
     { row: 0, column: 0, gridRows: 2, gridColumns: 2 },
+    { row: 0, column: 2, gridRows: 2, gridColumns: 2 },
     { row: 1, column: 2, gridRows: 1, gridColumns: 1 },
   ],
   // A miniature of a real plate: the pitch is scaled to the fixture's 32 µm

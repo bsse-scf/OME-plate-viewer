@@ -8,13 +8,15 @@
  * Two shapes of state are built here, and the difference is the interesting
  * part:
  *
- * * **One well** becomes one layer with one source, named after the well.
+ * * **One well** becomes one layer with one source, named after the well. The
+ *   source URL is the well's path within the plate — `…/B/2/0/` — so the well
+ *   it shows is legible wherever the URL appears.
  * * **A whole plate** becomes one layer with *many* sources — one per well.
  *   Neuroglancer composes a layer's sources in the shared coordinate space, so
- *   the per-well `translation` in each virtual OME-Zarr is what lays the plate
- *   out. Ninety-six wells then cost one render layer per channel instead of
- *   one per well and channel, which is the difference between a plate that
- *   opens and one that crawls.
+ *   the per-well `translation` in each image is what lays the plate out.
+ *   Ninety-six wells then cost one render layer per channel instead of one per
+ *   well and channel, which is the difference between a plate that opens and
+ *   one that crawls.
  *
  * In both cases the layer is `type: "auto"`. On load Neuroglancer splits a
  * layer with a channel axis into one layer per channel, taking each channel's
@@ -22,7 +24,7 @@
  * blending them additively. That is where the channel colours come from; the
  * viewer needs no configuration for it.
  */
-import { siteUrl, wellUrl } from '../vfs/client';
+import { imageUrl, siteUrl } from '../vfs/client';
 import { levelShape } from '../yokogawa/zarr';
 import type { PlateModel, Well } from '../yokogawa/types';
 
@@ -38,15 +40,19 @@ import type { PlateModel, Well } from '../yokogawa/types';
 const LAYOUT = 'xy';
 
 /**
- * Roughly how many pixels across the opening view should be.
+ * The window the opening view is framed for, in pixels.
  *
  * Neuroglancer's own default is one voxel per screen pixel, which for a plate
  * means opening on a few hundred micrometres of one well — the right data in
- * about the least useful place. The state is written before the window size is
- * known, so this estimates the smaller dimension of a full-window panel.
- * Opening a little too far out is harmless; too far in hides everything.
+ * about the least useful place. The state has to be written before the real
+ * window size is known, so it is framed for a nominal one and both axes are
+ * fitted: a plate is much wider than it is tall, and fitting only its longer
+ * side would leave most of a landscape window empty.
  */
-const VIEWPORT_EXTENT = 700;
+const NOMINAL_VIEWPORT = { width: 1280, height: 760 };
+
+/** Fraction of the window left as margin around the data. */
+const VIEWPORT_MARGIN = 1.08;
 
 /**
  * Black behind the slices instead of Neuroglancer's mid grey.
@@ -105,7 +111,7 @@ export function buildViewerState(
   wells: Well[],
 ): ViewerState {
   const name = selectionName(model, wells);
-  const sources = wells.map((well) => ({ url: `zarr://${wellUrl(datasetId, well.id)}` }));
+  const sources = wells.map((well) => ({ url: `zarr://${imageUrl(datasetId, well)}` }));
 
   // Neuroglancer measures position in voxels of the finest level and zoom in
   // "canonical voxels per viewport pixel", where the canonical voxel is the
@@ -114,8 +120,13 @@ export function buildViewerState(
   const { spacing } = model;
   const bounds = plateBounds(model, wells);
   const canonical = Math.min(spacing.x, spacing.y, spacing.z);
-  const widest = Math.max(bounds.x.high - bounds.x.low, bounds.y.high - bounds.y.low);
-  const deepest = Math.max(widest, bounds.z.high - bounds.z.low);
+  const across = bounds.x.high - bounds.x.low;
+  const down = bounds.y.high - bounds.y.low;
+  // Micrometres per pixel that fits both axes of the nominal window.
+  const resolution =
+    Math.max(across / NOMINAL_VIEWPORT.width, down / NOMINAL_VIEWPORT.height) *
+    VIEWPORT_MARGIN;
+  const deepest = Math.max(across, down, bounds.z.high - bounds.z.low);
 
   return {
     // Micrometres, declared in metres, which is the unit Neuroglancer works in.
@@ -131,7 +142,7 @@ export function buildViewerState(
       (bounds.z.low + bounds.z.high) / 2 / spacing.z,
       (model.sizeT - 1) / 2,
     ],
-    crossSectionScale: (widest * 1.1) / (VIEWPORT_EXTENT * canonical),
+    crossSectionScale: resolution / canonical,
     // Per viewport *height* rather than per pixel, and only used once the user
     // switches to a layout with a 3-D panel.
     projectionScale: (deepest * 1.4) / canonical,

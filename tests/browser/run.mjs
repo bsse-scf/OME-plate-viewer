@@ -397,15 +397,23 @@ async function checkCancellation(page) {
 
     // Level 1 is built rather than handed back as a byte range, in every
     // acquisition, so it is the level where cancelling saves real work.
+    const rowName = (row) => {
+      let name = '';
+      let rest = row;
+      do { name = String.fromCharCode(65 + (rest % 26)) + name; rest = Math.floor(rest / 26) - 1; }
+      while (rest >= 0);
+      return name;
+    };
     const keys = [];
     for (const well of record.model.wells) {
       const level = Math.min(1, well.levels - 1);
+      const image = `${rowName(well.row)}/${well.column + 1}/0`;
       for (let c = 0; c < record.model.sizeC; c += 1) {
         for (let z = 0; z < well.sizeZ; z += 1) {
           for (let gy = 0; gy < well.gridRows; gy += 1) {
             for (let gx = 0; gx < well.gridColumns; gx += 1) {
               keys.push(
-                new URL(`./_zarr/${record.id}/${well.id}/${level}/0.${c}.${z}.${gy}.${gx}`,
+                new URL(`./_zarr/${record.id}/${image}/${level}/0.${c}.${z}.${gy}.${gx}`,
                   location.href).href,
               );
             }
@@ -580,13 +588,13 @@ async function main() {
       window.__harness = module;
       return module.setUp();
     }, HARNESS);
-    check(harness.wells.length === 2, 'both wells are found', harness.wells.join(', '));
+    check(harness.wells.length === 3, 'every well is found', harness.wells.join(', '));
     check(harness.channels.length === 2, 'both channels are found');
     check(harness.levels === 3, 'the pyramid has three levels', String(harness.levels));
 
     const attributes = await page.evaluate(
       async (url) => (await fetch(`${url}.zattrs`)).json(),
-      harness.wellRoot,
+      harness.imageRoot,
     );
     check(
       attributes.multiscales?.[0]?.version === '0.4',
@@ -713,12 +721,12 @@ async function main() {
       options: document.getElementById('viewer-select').options.length,
     }));
     check(
-      summary.wells.join(',') === 'A1,B3',
+      summary.wells.join(',') === 'A1,A3,B3',
       'the plate map marks the imaged wells',
       summary.wells.join(','),
     );
     check(summary.channels === 2, 'the summary lists both channels');
-    check(summary.options === 3, 'the viewer picker offers the plate and each well');
+    check(summary.options === 4, 'the viewer picker offers the plate and each well');
     const landing = await shoot(page, 'landing');
     console.log(`  screenshot: ${landing.path}`);
 

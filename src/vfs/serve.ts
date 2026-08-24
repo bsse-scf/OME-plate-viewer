@@ -11,7 +11,7 @@
  */
 import { materialiseChunk, parseDtype, passthroughRange, workingSetBytes } from '../yokogawa/chunk';
 import type { PlaneLayout } from '../yokogawa/tiff';
-import { findWell, resolve, type Resolution } from '../yokogawa/zarr';
+import { resolve, type Resolution } from '../yokogawa/zarr';
 import { AbortError } from './gate';
 import { isNotAllowed } from './files';
 import { SW_VERSION, type DatasetRecord } from './protocol';
@@ -193,7 +193,7 @@ export interface ZarrServeOptions {
 /**
  * Serve a request under the `_zarr/` namespace.
  *
- * `GET|HEAD <base>_zarr/<dataset-id>/<well>/<level>/<t>.<c>.<z>.<y>.<x>`
+ * `GET|HEAD <base>_zarr/<dataset-id>/<row>/<column>/0/<level>/<t>.<c>.<z>.<y>.<x>`
  */
 export async function serveZarr(
   request: Request,
@@ -214,15 +214,9 @@ export async function serveZarr(
     });
   }
 
-  const [wellId, ...rest] = parsed.segments;
-  const well = wellId ? findWell(dataset.model, wellId) : undefined;
-  if (!well) {
-    return errorResponse(404, 'Not Found', { 'X-Local-Error': 'unknown-well' });
-  }
-
   let resolution: Resolution;
   try {
-    resolution = resolve(dataset.model, well, rest);
+    resolution = resolve(dataset.model, parsed.segments);
   } catch (error) {
     return errorResponse(500, `Could not resolve this key: ${String(error)}`);
   }

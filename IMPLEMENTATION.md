@@ -12,9 +12,9 @@ built this way.
                           │
       ┌───────────────────┴───────────────────┐
       │                                       │
-  OME-XML  ──►  plate model                sidecars
-  src/yokogawa/ome-xml.ts                  src/yokogawa/plate.ts
-                │  grid.ts, model.ts
+  OME-XML  ──►  plate model
+  src/yokogawa/ome-xml.ts
+                │  grid.ts, plate.ts, model.ts
                 ▼
           PlateModel  ── IndexedDB ──►  Service Worker
           (geometry + file names)       src/vfs/sw.ts
@@ -73,8 +73,7 @@ not know what produced them.
 ├─ 00013603_MIP.ome.xml      derived projections; ignored
 ├─ Image/
 │  └─ W0014F0001T0001Z001C1.tif   one 2000 x 2000 uint16 plane per file
-├─ Projection/               derived; ignored
-└─ 10_Greiner_….wpp          the plate product: well pitch and A1 margin
+└─ Projection/               derived; ignored
 ```
 
 The example acquisition this was developed against is 30 wells × 36 fields ×
@@ -146,47 +145,61 @@ fixed size, at a computable position.
 ## Placing wells on the plate
 
 Stage positions in the OME-XML are relative to the centre of each well — every
-well in a 96-well acquisition reports the same ones — so laying wells out needs
-one more number: the well pitch. `src/yokogawa/plate.ts` looks for it in the
-`.wpp` well-plate product file, then in `MP_*.xml`, then falls back to the
-standard SBS geometry for the plate's row and column count, and finally to a
-pitch derived from the imaged extent.
+well in a 96-well acquisition reports the same ones — so the wells have to be
+spaced out to sit next to each other.
 
-A well's array therefore has a real position on a real plate: 9 mm apart, with
-the imaged patch small in the middle of each, exactly as on the bench. That
-position is written into the virtual OME-Zarr as a `translation`, which is what
-makes opening several wells at once assemble a plate rather than a pile of
-unrelated images.
+**Not at their physical pitch.** A 9 mm well holding 2.7 mm of imaged area would
+put two thirds of a plate view on empty plastic, and the point of looking at a
+whole plate is to compare the wells, not to measure the gaps between them. The
+pitch is the widest well plus half again: an imaged patch, then a gap of half
+its own width, then the next. That keeps the wells clearly apart, keeps the
+plate reading as a plate, and keeps the eye on the data. Everything *inside* a
+well stays exactly where the stage put it.
 
-Two details the geometry depends on:
+This is also why nothing here reads the vendor's plate files. Well pitch, A1
+margin and SBS footprints were all needed only to reproduce a spacing the viewer
+does not use, and the layout now follows from the data itself.
 
-* Stage positions name the **centre** of a field of view, so a field's array
+Two details the geometry does depend on:
+
+* Stage positions name the **centre** of a field of view, so a field's image
   starts half a field earlier — plus the margin the overlap trim removed.
 * `PhysicalSizeZ` is written as the stack's range divided by its plane count,
   which is off by `n/(n-1)`: 7.65 µm where the recorded plane positions step by
   8.5. The positions are unambiguous, so **the z step is taken from them**
   whenever there are at least two.
 
-## The virtual OME-Zarr
+## The virtual OME-Zarr plate
 
-`src/yokogawa/zarr.ts` answers requests under a well's path by generating
-metadata on demand:
+The whole measurement is presented as an OME-Zarr **plate**, laid out the way
+the specification says a high-content screening dataset is laid out —
+`plate / row / column / field of view` — with metadata generated on demand:
 
 ```
-<well>/.zgroup            {"zarr_format": 2}
-<well>/.zattrs            multiscales (OME-NGFF 0.4) + omero
-<well>/<level>/.zarray    shape, chunks, dtype, no compressor
-<well>/<level>/.zattrs    _ARRAY_DIMENSIONS
-<well>/<level>/t.c.z.y.x  one chunk = one field of view
+.zattrs                        "plate": its rows, columns and wells
+A/.zgroup                      a row of the plate
+A/1/.zattrs                    "well": the fields of view it holds
+A/1/0/.zattrs                  "multiscales" and "omero" — an image
+A/1/0/<level>/.zarray          one resolution level
+A/1/0/<level>/t.c.z.y.x        one chunk, which is one field of view
 ```
 
-Zarr v2 with OME-NGFF 0.4 rather than v3/0.5, because that is the combination
-Neuroglancer supports for `zarr://` sources, and because a v2 array with no
-compressor is the format whose chunk bytes a raw TIFF plane already is.
+Writing it as a plate rather than as a heap of images is what makes the well
+names in the paths the well names on the bench — `A/1` *is* well A1 — and it
+means anything that reads OME-Zarr plates can read this one.
+
+A well's fields of view are assembled into a single image at `0` rather than
+published one by one. The specification allows either, since a well holds
+however many images it holds, and one image per well is the difference between
+a viewer opening thirty-six sources per well and opening one.
+
+Zarr v2 with OME-Zarr 0.4 rather than v3 with 0.5, because that is the
+combination Neuroglancer supports for `zarr://` sources, and because a v2 array
+with no compressor is the format whose chunk bytes a raw TIFF plane already is.
 
 Axes are `t, c, z, y, x` in micrometres. Each level declares its own `scale` and
 `translation`; the translation names the centre of voxel zero, which is the
-convention OME-NGFF readers assume, so adding half a voxel per level keeps the
+convention OME-Zarr readers assume, so adding half a voxel per level keeps the
 levels registered to each other at their shared corner.
 
 `omero` carries the channel names, the colours decoded from the OME `Color`
@@ -496,13 +509,13 @@ src/
   yokogawa/
     xml.ts                  a small XML reader
     ome-xml.ts              the OME-XML, reduced
-    plate.ts                well pitch, well names
+    plate.ts                row, column and well names
     grid.ts                 fields -> acquisition grid
     model.ts                the plate model
     types.ts                what a model is
     tiff.ts                 TIFF directories and row ranges
     chunk.ts                one plane -> one chunk
-    zarr.ts                 the virtual OME-Zarr
+    zarr.ts                 the virtual OME-Zarr plate
     contrast.ts             display ranges from one plane per channel
   integrations/
     neuroglancer.ts         viewer state
