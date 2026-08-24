@@ -28,6 +28,16 @@ export interface FixtureOptions {
   wells: { row: number; column: number; gridRows: number; gridColumns: number }[];
   /** Plate geometry written to the `.wpp` sidecar, in millimetres. */
   plate: { columnPitch: number; rowPitch: number; leftMargin: number; topMargin: number };
+  /**
+   * What the pixels look like.
+   *
+   * `gradient` is a value that is a distinct function of every coordinate, so a
+   * cropped or reduced chunk can be checked arithmetically. `sparse` imitates
+   * what a fluorescence channel actually is — a dim background with bright
+   * objects over a few per cent of the area — which is the distribution that
+   * decides whether the display range and the pyramid agree.
+   */
+  content: 'gradient' | 'sparse';
 }
 
 export const DEFAULT_FIXTURE: FixtureOptions = {
@@ -45,6 +55,7 @@ export const DEFAULT_FIXTURE: FixtureOptions = {
   // A miniature of a real plate: the pitch is scaled to the fixture's 32 µm
   // fields so that a whole-plate view is as sparse as a real one.
   plate: { columnPitch: 0.2, rowPitch: 0.2, leftMargin: 0.5, topMargin: 0.4 },
+  content: 'gradient',
 };
 
 /**
@@ -62,6 +73,54 @@ export function pixelValue(
   x: number,
 ): number {
   return (wellIndex * 7 + fieldIndex * 11 + c * 13 + z * 17 + y * 3 + x) % 4096;
+}
+
+/** A deterministic 32-bit hash, so a fixture is the same on every run. */
+function hash(...values: number[]): number {
+  let h = 0x811c9dc5;
+  for (const value of values) {
+    h ^= value + 0x9e3779b9;
+    h = Math.imul(h, 0x01000193) >>> 0;
+    h ^= h >>> 15;
+  }
+  return h >>> 0;
+}
+
+/**
+ * A dim background with sparse bright objects, like a fluorescence channel.
+ *
+ * Blobs sit on a coarse lattice, jittered, so their positions are reproducible
+ * and their coverage is a few per cent. One blob in a hundred is an order of
+ * magnitude brighter — the aggregates and debris every real plate has — which
+ * is what gives the histogram the long tail that decides whether a display
+ * range taken from it leaves the image visible or black.
+ */
+export function sparseValue(
+  wellIndex: number,
+  fieldIndex: number,
+  c: number,
+  z: number,
+  y: number,
+  x: number,
+): number {
+  const LATTICE = 16;
+  let value = 6 + (hash(x, y, c) % 5);
+  for (let dy = -1; dy <= 1; dy += 1) {
+    for (let dx = -1; dx <= 1; dx += 1) {
+      const siteY = Math.floor(y / LATTICE) + dy;
+      const siteX = Math.floor(x / LATTICE) + dx;
+      const h = hash(siteX, siteY, wellIndex, fieldIndex, c, z);
+      if (h % 5 !== 0) continue;
+      const centreY = siteY * LATTICE + ((h >>> 4) % LATTICE);
+      const centreX = siteX * LATTICE + ((h >>> 10) % LATTICE);
+      const radius = 5 + ((h >>> 16) % 3);
+      if ((x - centreX) ** 2 + (y - centreY) ** 2 < radius * radius) {
+        const bright = 1800 + ((h >>> 20) % 1400);
+        value += h % 100 === 0 ? bright * 12 : bright;
+      }
+    }
+  }
+  return value;
 }
 
 /** Encode a minimal uncompressed little-endian TIFF holding one 16-bit plane. */
@@ -177,10 +236,11 @@ export function buildFixture(options: FixtureOptions = DEFAULT_FIXTURE): Fixture
               fieldIndex + 1,
             ).padStart(4, '0')}T0001Z${String(z + 1).padStart(3, '0')}C${c + 1}.tif`;
 
+            const value = options.content === 'sparse' ? sparseValue : pixelValue;
             const pixels = new Uint16Array(field * field);
             for (let y = 0; y < field; y += 1) {
               for (let x = 0; x < field; x += 1) {
-                pixels[y * field + x] = pixelValue(wellIndex, fieldIndex, c, z, y, x);
+                pixels[y * field + x] = value(wellIndex, fieldIndex, c, z, y, x);
               }
             }
             files.push({ path: `Image/${name}`, bytes: encodeTiff(field, field, pixels, 8) });

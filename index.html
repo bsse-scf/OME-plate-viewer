@@ -161,7 +161,9 @@
           <li>
             <strong>Coarser levels</strong> — every image also offers reduced resolutions,
             built by sampling rows and averaging columns, so a plate overview reads a
-            fraction of the data instead of all of it.
+            fraction of the data instead of all of it. Averaging keeps the exposure the
+            same at every zoom, so one contrast setting holds from a single cell to the
+            whole plate.
           </li>
           <li>
             <strong>Channels</strong> — colours, names and display ranges come from the
@@ -177,9 +179,12 @@
           <kbd>drag</kbd><span>Pan</span>
           <kbd>scroll</kbd><span>Move through z</span>
           <kbd>ctrl + scroll</kbd><span>Zoom</span>
-          <kbd>shift + drag</kbd><span>Rotate, in the 3-D panel</span>
           <kbd>Esc</kbd><span>Leave the viewer and come back to the plate map</span>
         </div>
+        <p>
+          The viewer opens looking down at the plate, one panel. The buttons in the
+          panel's top corner switch to orthogonal or 3-D layouts when you want them.
+        </p>
         <p>
           Click a well on the plate map to open just that well, which loads immediately.
           Opening the whole plate is the same data at a coarser level — it streams in

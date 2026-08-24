@@ -352,7 +352,11 @@ async function main() {
       'no layer reported a load error',
       single.layers.map((layer) => layer.error).filter(Boolean).join('; '),
     );
-    check(single.layout === '4panel-alt', 'volumetric data opens in orthogonal panels', String(single.layout));
+    check(
+      single.layout === 'xy',
+      'the viewer opens on a single xy panel, depth or not',
+      String(single.layout),
+    );
     check(
       (await page.$('.neuroglancer-layer-panel')) === null,
       'the layer bar is hidden',

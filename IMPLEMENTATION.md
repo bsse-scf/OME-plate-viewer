@@ -315,8 +315,13 @@ Three things the state has to say explicitly:
 * **Black background.** Fluorescence is emission on nothing; Neuroglancer's mid
   grey reads as signal.
 
-The layer bar is hidden with `showLayerPanel: false`. Layout is `4panel-alt` for
-data with depth, `xy` for a single plane.
+The layer bar is hidden with `showLayerPanel: false`.
+
+The layout is always `xy`, a single panel, whether or not the data has depth. A
+plate is looked at from above; orthogonal panels of a screening stack spend
+three quarters of the window on seven z planes seen edge-on, and z stays a
+scroll away in the xy panel. The other layouts are one click away in each
+panel's corner.
 
 ## The page
 
@@ -331,11 +336,31 @@ here: opening a whole plate reads a slice of the entire acquisition, opening one
 well reads almost nothing, and clicking a well is both the obvious gesture and
 the cheap one.
 
-**Auto-contrast** (`src/yokogawa/contrast.ts`) samples one plane per channel —
-the field nearest the middle of the most densely tiled well, at mid stack, every
-few rows — and takes percentiles from a histogram. Neuroglancer would otherwise
-compute contrast from whatever chunks happen to have loaded, which on a plate
-means the range flickering as wells stream in.
+**Auto-contrast** (`src/yokogawa/contrast.ts`) samples three fields per channel
+— those nearest the middle of the most densely tiled well, at mid stack, every
+few rows — pools them, and takes percentiles from a histogram. Neuroglancer
+would otherwise compute contrast from whatever chunks happen to have loaded,
+which on a plate means the range flickering as wells stream in.
+
+**Which percentile matters far more than it looks.** Fluorescence is
+long-tailed: on a real DAPI plane the median is 10 counts, the 99th percentile
+297 and the maximum 2859. A range taken at the 99.9th percentile stretches over
+the tail and leaves the sample itself in the bottom few per cent of it — barely
+one pixel in a hundred reaches a quarter brightness, against one in twenty at
+the 99th. And because Neuroglancer applies one range to the whole multiscale,
+that same choice decides what a plate overview looks like, where the effect is
+worse still: measured across the pyramid of a real well, a 99.9th-percentile
+range leaves **0.00 %** of the coarsest level above a quarter brightness — a
+black plate — where a 99th-percentile range holds it at about 3 % from full
+resolution all the way down. The percentile is 99.
+
+That measurement is also what settles the reducer. Averaging pulls the extreme
+maximum of a 128-fold reduction down by a factor of ten, which looks alarming,
+but it barely moves the bulk: the fraction of pixels above a quarter brightness
+runs 5.20 %, 5.19 %, 5.75 %, 4.89 % from full resolution down to a 128-fold
+reduction. A maximum instead takes the same figures to 5.2 %, 8.8 %, 15.9 %,
+30.2 % — coarse levels progressively brighter than the data they stand for.
+Averaging is what keeps one display range honest at every zoom.
 
 Only one dataset is mounted at a time: a second drop replaces the first rather
 than accumulating handles the user cannot see or revoke.

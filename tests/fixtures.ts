@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 
 import { buildFixture, FIXTURE_METADATA, type FixtureOptions } from './synthetic';
 
-export { DEFAULT_FIXTURE, encodeTiff, pixelValue, type FixtureOptions } from './synthetic';
+export { DEFAULT_FIXTURE, encodeTiff, pixelValue, sparseValue, type FixtureOptions } from './synthetic';
 
 /** Write a complete synthetic dataset folder and return its OME-XML file name. */
 export async function writeFixture(root: string, options?: FixtureOptions): Promise<string> {
