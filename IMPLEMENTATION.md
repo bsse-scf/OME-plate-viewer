@@ -413,8 +413,18 @@ identical in both modes.
 
 `optimizeDeps.include` names Neuroglancer's CommonJS dependencies through their
 importer. Excluding the package to keep its `?raw` imports working also excludes
-its dependencies, and left unbundled the CJS ones reach the browser as CJS and
-fail — in dev only, since the production build converts them.
+its dependencies, and left unbundled the CommonJS ones reach the browser as
+CommonJS, where importing a named export throws — in dev only, since the
+production build converts them.
+
+Subpaths have to be named one by one: pre-bundling `crc-32` does nothing for
+`crc-32/crc32c.js`. Getting that wrong is quiet and expensive, because the
+module that fails is imported by Neuroglancer's **chunk worker**. The viewer
+still starts, the layers still resolve their metadata, the channel colours and
+the plate layout are still right, and only the pixels never arrive — while the
+worker reports its failure as an `error` event with an empty message. The
+browser test loads that worker's module graph in dev and says what it could not
+import.
 
 ## Layout
 

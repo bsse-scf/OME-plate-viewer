@@ -67,10 +67,22 @@ export default defineConfig({
     // package `imports` field; esbuild pre-bundling cannot handle either.
     exclude: ['neuroglancer'],
     // Excluding the package also excludes its dependencies, and Neuroglancer
-    // pulls in a handful of CommonJS ones. Left unbundled they reach the
-    // browser as CJS and its `default` import fails, which breaks `npm run dev`
-    // — and only dev, since the production build converts them. Naming them
-    // through their importer is Vite's hook for exactly this case.
+    // pulls in several CommonJS ones. Left unbundled they reach the browser as
+    // CommonJS, and importing a named export from one fails — which breaks
+    // `npm run dev`, and only dev, since the production build converts them.
+    // Naming them through their importer is Vite's hook for exactly this case.
+    //
+    // Subpaths have to be named individually: pre-bundling `crc-32` does
+    // nothing for `crc-32/crc32c.js`. Getting that wrong is quiet and
+    // expensive — the module that fails here is imported by Neuroglancer's
+    // *chunk worker*, so the viewer still starts and still resolves metadata,
+    // and only the pixels never arrive. `tests/browser/run.mjs` loads that
+    // worker's module graph in dev and reports what it could not import.
+    //
+    // The list is every CommonJS specifier under `neuroglancer/lib`:
+    //   grep -rhoE 'from "[a-z@][^"]*"' node_modules/neuroglancer/lib
+    // minus the `?raw` SVG and CSS assets, which Vite handles itself, and
+    // minus the ESM packages (lodash-es, msgpackr, valibot), which need nothing.
     include: [
       'neuroglancer > codemirror',
       'neuroglancer > codemirror/addon/fold/brace-fold.js',
@@ -78,10 +90,11 @@ export default defineConfig({
       'neuroglancer > codemirror/addon/fold/foldgutter.js',
       'neuroglancer > codemirror/addon/lint/lint.js',
       'neuroglancer > codemirror/mode/javascript/javascript.js',
-      'neuroglancer > core-js/actual/symbol/dispose.js',
       'neuroglancer > core-js/actual/symbol/async-dispose.js',
+      'neuroglancer > core-js/actual/symbol/dispose.js',
       'neuroglancer > crc-32',
-      'neuroglancer > msgpackr',
+      'neuroglancer > crc-32/crc32c.js',
+      'neuroglancer > gl-matrix',
       'neuroglancer > nifti-reader-js',
     ],
   },

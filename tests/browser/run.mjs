@@ -28,6 +28,7 @@ import { inflateSync } from 'node:zlib';
 
 import * as esbuild from 'esbuild';
 import puppeteer from 'puppeteer-core';
+import { createServer as createViteServer } from 'vite';
 
 const CHROME = process.env.CHROME_PATH ?? '/usr/bin/google-chrome';
 const DATASETS = (process.env.CQ3000_DATASETS ?? '').split(':').filter(Boolean);
@@ -359,6 +360,64 @@ async function checkAcquisition(page, base, path, chunkFailures) {
   );
 }
 
+/**
+ * The development server has to be able to run the chunk worker.
+ *
+ * Excluding Neuroglancer from Vite's dependency pre-bundling — which its `?raw`
+ * imports require — also excludes its CommonJS dependencies, and importing a
+ * named export from an unbundled one throws. When that happens inside the
+ * *chunk worker*, the failure is close to silent: the viewer starts, the layers
+ * resolve their metadata, the colours and the plate layout are right, and only
+ * the pixels never arrive. So this loads the worker's module graph and reports
+ * what it could not import.
+ */
+async function checkDevServer() {
+  console.log('\ndevelopment server');
+  const vite = await createViteServer({ logLevel: 'error' });
+  await vite.listen();
+  const base = `http://localhost:${vite.httpServer.address().port}/`;
+  const browser = await puppeteer.launch({
+    executablePath: CHROME,
+    headless: true,
+    args: ['--no-sandbox', '--enable-unsafe-swiftshader'],
+    defaultViewport: { width: 900, height: 600 },
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${base}neuroglancer/index.html`, { waitUntil: 'networkidle0' });
+    const result = await page.evaluate(async (workerUrl) => {
+      // Loaded from a worker of our own, because a failure in Neuroglancer's
+      // reports nothing useful — an `error` event with an empty message.
+      const source = `
+        (async () => {
+          try {
+            await import(${JSON.stringify(workerUrl)});
+            postMessage({ ok: true });
+          } catch (error) {
+            postMessage({ ok: false, message: String(error?.message ?? error) });
+          }
+        })();
+      `;
+      const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+      const worker = new Worker(url, { type: 'module' });
+      return await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve({ ok: false, message: 'timed out' }), 60000);
+        const done = (value) => { clearTimeout(timer); worker.terminate(); resolve(value); };
+        // Neuroglancer's own modules post messages once they load, and any
+        // message at all means the graph evaluated.
+        worker.onmessage = (event) => done(event.data?.ok === false ? event.data : { ok: true });
+        worker.onerror = (event) => done({ ok: false, message: event.message || 'worker failed to load' });
+      });
+    }, `${base}node_modules/neuroglancer/lib/chunk_worker.bundle.js?worker_file&type=module`);
+
+    check(result.ok, "Neuroglancer's chunk worker loads in dev", result.message ?? '');
+  } finally {
+    await browser.close();
+    await vite.close();
+  }
+}
+
 /* ------------------------------------------------------------------- main */
 
 async function main() {
@@ -603,6 +662,8 @@ async function main() {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));
   }
+
+  await checkDevServer();
 
   console.log(`\n${checks - failures.length}/${checks} checks passed`);
   if (failures.length > 0) process.exitCode = 1;
