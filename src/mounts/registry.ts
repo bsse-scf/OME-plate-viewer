@@ -7,7 +7,7 @@
  * bytes, and the browser can restart the worker at any time.
  */
 import { idbDelete, idbGetAll, idbPut } from '../vfs/idb';
-import { DATASET_STORE, type DatasetRecord } from '../vfs/protocol';
+import { DATASET_STORE, MODEL_VERSION, type DatasetRecord } from '../vfs/protocol';
 import { flushWorker } from '../vfs/client';
 import type { PlateModel } from '../yokogawa/types';
 
@@ -32,6 +32,7 @@ export async function createDataset(
     name: handle.name,
     handle,
     model,
+    version: MODEL_VERSION,
     createdAt: Date.now(),
   };
   await idbPut(DATASET_STORE, dataset);
@@ -56,23 +57,29 @@ export async function removeAllDatasets(): Promise<void> {
 }
 
 /**
- * Drop datasets whose read permission no longer holds.
+ * Drop datasets that cannot be reopened as they are.
  *
- * Handles survive a reload in IndexedDB but their permission grant does not:
- * re-granting requires a user gesture. Rather than leave the user with a
- * viewer that 403s on every chunk, forget them so the page can ask for a fresh
- * drop. Returns the number removed.
+ * Two reasons. Handles survive a reload in IndexedDB but their permission grant
+ * does not — re-granting requires a user gesture — so rather than leave the
+ * user with a viewer that 403s on every chunk, forget them and ask for a fresh
+ * drop. And a model built by an older version of this code carries derived
+ * values, the display ranges above all, that the current version would not
+ * produce; reusing it would quietly undo an update.
+ *
+ * Returns the number removed.
  */
 export async function pruneUnreadableDatasets(): Promise<number> {
   let removed = 0;
   for (const dataset of await listDatasets()) {
-    let state: PermissionState = 'granted';
-    try {
-      state = await dataset.handle.queryPermission({ mode: 'read' });
-    } catch {
-      state = 'denied';
+    let usable = dataset.version === MODEL_VERSION;
+    if (usable) {
+      try {
+        usable = (await dataset.handle.queryPermission({ mode: 'read' })) === 'granted';
+      } catch {
+        usable = false;
+      }
     }
-    if (state !== 'granted') {
+    if (!usable) {
       await idbDelete(DATASET_STORE, dataset.id);
       removed += 1;
     }

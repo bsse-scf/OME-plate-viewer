@@ -16,7 +16,7 @@ import { loadPlateModel } from '../src/yokogawa/model';
 import { readPlaneLayout } from '../src/yokogawa/tiff';
 import { openDatasetFile } from '../src/vfs/files';
 import { parsePath, serveZarr } from '../src/vfs/serve';
-import type { DatasetRecord } from '../src/vfs/protocol';
+import { MODEL_VERSION, type DatasetRecord } from '../src/vfs/protocol';
 import { DEFAULT_FIXTURE, pixelValue, writeFixture } from './fixtures';
 import { directoryHandle } from './node-handles';
 
@@ -35,6 +35,7 @@ async function mount(): Promise<{
     name: 'FIXTURE',
     handle,
     model: await loadPlateModel(handle),
+    version: MODEL_VERSION,
     createdAt: Date.now(),
   };
 

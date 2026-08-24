@@ -43,8 +43,20 @@ export interface DatasetRecord {
   name: string;
   handle: FileSystemDirectoryHandle;
   model: PlateModel;
+  /** {@link MODEL_VERSION} at the time the model was built. */
+  version: number;
   createdAt: number;
 }
+
+/**
+ * Bumped whenever a model built by an older version would be wrong to reuse.
+ *
+ * A stored model is not just a cache of the folder: it carries values derived
+ * from reading it, the display ranges above all. Reopening a session would
+ * otherwise hand a fixed build a model built by a broken one, and the fix would
+ * appear not to work.
+ */
+export const MODEL_VERSION = 2;
 
 /** Messages the page sends to the service worker. */
 export type PortalMessage =

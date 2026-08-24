@@ -39,10 +39,12 @@ Requires a Chromium-based browser (see [Limitations](#limitations)).
 `test:browser` needs Chrome; `CHROME_PATH` overrides the default
 `/usr/bin/google-chrome`.
 
-To run the Node tests against real acquisitions as well:
+`CQ3000_DATASETS` points either suite at real measurement folders, separated by
+`:`. The browser run then drops them on the page the way a user does:
 
 ```bash
 CQ3000_DATASETS=/path/to/20260120T172222_20X_W npm test
+CQ3000_DATASETS=/path/to/20260120T172222_20X_W npm run test:browser
 ```
 
 ## What to drop

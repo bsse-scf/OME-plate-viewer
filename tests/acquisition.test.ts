@@ -18,7 +18,7 @@ import { openDatasetFile } from '../src/vfs/files';
 import { serveZarr } from '../src/vfs/serve';
 import { levelShape } from '../src/yokogawa/zarr';
 import { fieldCount, planeCount } from '../src/yokogawa/types';
-import type { DatasetRecord } from '../src/vfs/protocol';
+import { MODEL_VERSION, type DatasetRecord } from '../src/vfs/protocol';
 import { directoryHandle } from './node-handles';
 
 const PREFIX = '/_zarr/';
@@ -64,6 +64,7 @@ for (const path of paths) {
       name: model.folder,
       handle,
       model,
+      version: MODEL_VERSION,
       createdAt: Date.now(),
     };
     const get = (key: string) => {

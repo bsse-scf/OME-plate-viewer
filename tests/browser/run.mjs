@@ -12,6 +12,11 @@
  * bundled separately and served beside it, so nothing test-only ends up in
  * `dist/`.
  *
+ * Setting `CQ3000_DATASETS` adds a pass over real acquisitions, dropped onto
+ * the page the way a user drops them — the one path a synthetic fixture in
+ * origin-private storage cannot stand in for, and the one where a plate that
+ * loads its metadata but none of its pixels would show up.
+ *
  * Requires Chrome. `CHROME_PATH` overrides the default.
  */
 import { createServer } from 'node:http';
@@ -25,6 +30,7 @@ import * as esbuild from 'esbuild';
 import puppeteer from 'puppeteer-core';
 
 const CHROME = process.env.CHROME_PATH ?? '/usr/bin/google-chrome';
+const DATASETS = (process.env.CQ3000_DATASETS ?? '').split(':').filter(Boolean);
 const DIST = new URL('../../dist/', import.meta.url);
 const SHOTS = new URL('screenshots/', import.meta.url);
 
@@ -244,6 +250,115 @@ async function shoot(page, name) {
   return { path: fileURLToPath(file), image: decodePng(bytes) };
 }
 
+/**
+ * Drop a folder on the page, the way a user does.
+ *
+ * Chrome builds the same `DataTransfer` a real drag produces, so the page's
+ * `getAsFileSystemHandle()` yields a genuine directory handle — which is what
+ * makes this worth doing at all.
+ */
+async function dropFolder(page, path) {
+  const zone = await page.$('#dropzone');
+  const box = await zone.boundingBox();
+  const cdp = await page.createCDPSession();
+  await cdp.send('Input.setInterceptDrags', { enabled: true });
+
+  const data = {
+    items: [{ mimeType: 'text/uri-list', data: `file://${path}` }],
+    files: [path],
+    dragOperationsMask: 1,
+  };
+  const at = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
+  for (const type of ['dragEnter', 'dragOver', 'drop']) {
+    await cdp.send('Input.dispatchDragEvent', { type, ...at, data, modifiers: 0 });
+  }
+  await cdp.detach();
+}
+
+/** Wait for the viewer overlay's frame to have a Neuroglancer with layers. */
+async function viewerFrame(page, timeout) {
+  await page.waitForFunction(
+    () => {
+      const viewer = document.getElementById('viewer');
+      return viewer !== null && !viewer.hidden;
+    },
+    { timeout: 20000 },
+  );
+  const frame = await (await page.$('#viewer-frame')).contentFrame();
+  await frame.waitForFunction(() => window.viewer?.layerManager.managedLayers.length > 0, {
+    timeout,
+    polling: 500,
+  });
+  return frame;
+}
+
+/** The whole real-acquisition pass, for one measurement folder. */
+async function checkAcquisition(page, base, path, chunkFailures) {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  console.log(`\nreal acquisition — ${name}`);
+
+  await page.goto(base, { waitUntil: 'networkidle0' });
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null, { timeout: 20000 });
+  chunkFailures.length = 0;
+
+  await dropFolder(page, path);
+  await page.waitForFunction(
+    () => {
+      const section = document.getElementById('dataset');
+      return section !== null && !section.hidden;
+    },
+    { timeout: 600000, polling: 500 },
+  );
+
+  const summary = await page.evaluate(() => ({
+    facts: document.getElementById('dataset-facts').innerText.replace(/\n/g, ' '),
+    wells: document.querySelectorAll('.well.is-imaged').length,
+    channels: document.querySelectorAll('.channel-swatch').length,
+  }));
+  console.log(`  ${summary.facts}`);
+  check(summary.wells > 0, 'the drop yields a readable plate', `${summary.wells} wells`);
+  check(summary.channels > 0, 'the channels are read');
+
+  // One well, which is the cheap path and should fill in almost at once.
+  await page.evaluate(() => document.querySelector('.well.is-imaged').click());
+  const wellView = await viewerFrame(page, 120000);
+  const wellLayers = await wellView.evaluate(() =>
+    window.viewer.layerManager.managedLayers.map((managed) => ({
+      name: managed.name,
+      error: managed.layer?.dataSources?.[0]?.loadState?.error?.message,
+    })),
+  );
+  check(
+    wellLayers.every((layer) => layer.error === undefined),
+    'every layer of a real well loads',
+    wellLayers.map((layer) => layer.error).filter(Boolean).join('; '),
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 20000));
+  const wellShot = await shoot(page, `real-${name}-well`);
+  const wellLit = litFraction(wellShot.image);
+  // The failure this guards is a plate whose metadata is right — colours,
+  // layout, layer names — and whose pixels never arrive.
+  check(wellLit > 0.02, 'a real well draws its pixels', `${(wellLit * 100).toFixed(1)}% lit`);
+  console.log(`  screenshot: ${wellShot.path}`);
+
+  // Then the whole plate, which streams.
+  await page.evaluate(() => document.getElementById('viewer-back').click());
+  await page.evaluate(() => document.getElementById('open-plate').click());
+  await viewerFrame(page, 120000);
+  await new Promise((resolve) => setTimeout(resolve, 45000));
+  const plateShot = await shoot(page, `real-${name}-plate`);
+  const plateLit = litFraction(plateShot.image);
+  check(plateLit > 0.005, 'a real plate draws its pixels', `${(plateLit * 100).toFixed(2)}% lit`);
+  console.log(`  screenshot: ${plateShot.path}`);
+
+  check(
+    chunkFailures.length === 0,
+    'no chunk request failed',
+    `${chunkFailures.length}, e.g. ${chunkFailures.slice(0, 3).join(', ')}`,
+  );
+}
+
 /* ------------------------------------------------------------------- main */
 
 async function main() {
@@ -276,6 +391,15 @@ async function main() {
 
   try {
     const page = await browser.newPage();
+    // Group-level probes for `.zarray` and `zarr.json` are how a Zarr reader
+    // asks "is this an array or a group?", so only chunk keys count as
+    // failures here.
+    const chunkFailures = [];
+    page.on('response', (response) => {
+      const url = response.url();
+      if (response.status() < 400 || !url.includes('_zarr/')) return;
+      if (/\/\d+(\.\d+)+$/.test(url)) chunkFailures.push(`${response.status()} ${url.slice(-60)}`);
+    });
     const consoleErrors = [];
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text());
@@ -451,6 +575,13 @@ async function main() {
       (text) => !/Failed to load resource|404|not found/i.test(text),
     );
     check(noise.length === 0, 'no unexpected console errors', noise.slice(0, 3).join(' | '));
+
+    for (const path of DATASETS) {
+      await checkAcquisition(page, base, path, chunkFailures);
+    }
+    if (DATASETS.length === 0) {
+      console.log('\nreal acquisitions skipped (set CQ3000_DATASETS to include them)');
+    }
 
     console.log('\nthe build itself');
     check(existsSync(new URL('sw.js', DIST)), 'the worker is emitted at the deployment root');

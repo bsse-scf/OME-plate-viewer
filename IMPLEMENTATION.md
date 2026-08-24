@@ -354,6 +354,13 @@ range leaves **0.00 %** of the coarsest level above a quarter brightness — a
 black plate — where a 99th-percentile range holds it at about 3 % from full
 resolution all the way down. The percentile is 99.
 
+**The control has to span the data too.** `omero`'s `window` is the range the
+contrast slider covers, and `start`/`end` the setting within it. Left at the
+pixel type's own limits, a 16-bit channel whose signal reaches three thousand
+gets a slider stretched over sixty-five thousand: every setting within reach of
+the mouse looks identical, which reads as the contrast doing nothing at all. The
+bounds are taken from the sample's own extremes.
+
 That measurement is also what settles the reducer. Averaging pulls the extreme
 maximum of a 128-fold reduction down by a factor of ten, which looks alarming,
 but it barely moves the bulk: the fraction of pixels above a quarter brightness
@@ -363,7 +370,13 @@ reduction. A maximum instead takes the same figures to 5.2 %, 8.8 %, 15.9 %,
 Averaging is what keeps one display range honest at every zoom.
 
 Only one dataset is mounted at a time: a second drop replaces the first rather
-than accumulating handles the user cannot see or revoke.
+than accumulating handles the user cannot see or revoke. A stored dataset that
+is still readable is reopened on startup, since the model was stored alongside
+the handle and no pixels are read to show a plate — but it carries a version
+stamp, and one built by an older version of this code is discarded rather than
+reused. A model is not merely a cache of the folder: it holds values derived
+from reading it, the display ranges above all, and reusing an old one would
+quietly undo an update.
 
 ## Costs, and what they buy
 
@@ -450,6 +463,15 @@ Setting `CQ3000_DATASETS` to one or more measurement folders adds a pass over
 real acquisitions: the model is built, a plane's TIFF directory is checked
 against what the fast path assumes, and one chunk is read at every level. The
 synthetic fixture pins the arithmetic; this pins the assumptions.
+
+Setting `CQ3000_DATASETS` also adds a real-acquisition pass to the browser run:
+the folder is dropped on the page over the DevTools protocol, which builds the
+same `DataTransfer` a real drag produces, so the page gets a genuine directory
+handle. It then opens a well and the whole plate and checks that pixels actually
+reach the screen. That pass exists because everything before it can pass while a
+plate loads its metadata — colours, layout, layer names — and none of its
+pixels; a fixture in origin-private storage cannot stand in for a dropped
+folder, and it was the gap through which exactly that failure once slipped.
 
 `npm run test:browser` drives real Chrome against the production build, served
 from a subpath so the GitHub Pages deployment shape is covered too. It writes

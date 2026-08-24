@@ -18,7 +18,7 @@ import { readPlaneLayout } from '../src/yokogawa/tiff';
 import { serveZarr } from '../src/vfs/serve';
 import { loadPlateModel } from '../src/yokogawa/model';
 import { levelShape } from '../src/yokogawa/zarr';
-import type { DatasetRecord } from '../src/vfs/protocol';
+import { MODEL_VERSION, type DatasetRecord } from '../src/vfs/protocol';
 import type { PlateModel, Well } from '../src/yokogawa/types';
 import { DEFAULT_FIXTURE, writeFixture } from './fixtures';
 import { directoryHandle } from './node-handles';
@@ -36,6 +36,7 @@ test('percentiles cope with flat and empty input', () => {
   assert.equal(percentiles([]), null);
   const flat = percentiles(new Float64Array(1000).fill(42))!;
   assert.ok(flat.high > flat.low);
+  assert.ok(flat.max > flat.min);
 });
 
 /** Fraction of samples at or above a quarter of the display range. */
@@ -93,7 +94,13 @@ test('the display range keeps the image visible at every level', async (t) => {
   const window = model.channels[0].window;
   assert.ok(window.end > window.start, 'the range is empty');
 
-  const dataset: DatasetRecord = { id: 'd', name: 'd', handle, model, createdAt: 0 };
+  // The contrast control spans the data, not the pixel type. Stretched over
+  // 16 bits it cannot be dragged anywhere useful, which reads to a user as the
+  // contrast doing nothing at all.
+  assert.ok(window.min <= window.start && window.max > window.end, 'the control excludes the range');
+  assert.ok(window.max < 65535, `the control still spans the whole pixel type (${window.max})`);
+
+  const dataset: DatasetRecord = { id: 'd', name: 'd', handle, model, version: MODEL_VERSION, createdAt: 0 };
   const prefix = '/_zarr/';
   const get = (key: string) => {
     const url = new URL(`https://example.test${prefix}d/${key}`);

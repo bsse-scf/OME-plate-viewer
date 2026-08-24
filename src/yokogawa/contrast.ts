@@ -59,8 +59,17 @@ function centralTiles(well: Well, count: number): Tile[] {
     .slice(0, count);
 }
 
-/** Low and high percentiles of a sample, via a two-pass histogram. */
-export function percentiles(values: ArrayLike<number>): { low: number; high: number } | null {
+/**
+ * Low and high percentiles of a sample, via a two-pass histogram, with the
+ * extremes it saw.
+ *
+ * The extremes are not the display range — they are the range the *control*
+ * spans, so that dragging it explores the data rather than the sixty-five
+ * thousand values the pixel type could in principle hold.
+ */
+export function percentiles(
+  values: ArrayLike<number>,
+): { low: number; high: number; min: number; max: number } | null {
   if (values.length === 0) return null;
 
   let min = Number.POSITIVE_INFINITY;
@@ -72,7 +81,7 @@ export function percentiles(values: ArrayLike<number>): { low: number; high: num
     if (value > max) max = value;
   }
   if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-  if (max === min) return { low: min, high: min + 1 };
+  if (max === min) return { low: min, high: min + 1, min, max: min + 1 };
 
   const counts = new Uint32Array(BINS);
   const scale = (BINS - 1) / (max - min);
@@ -95,7 +104,7 @@ export function percentiles(values: ArrayLike<number>): { low: number; high: num
 
   const low = at(LOW);
   const high = at(HIGH);
-  return { low, high: high > low ? high : low + 1 };
+  return { low, high: high > low ? high : low + 1, min, max };
 }
 
 /** Read a thin sample of one plane, as numbers. */
@@ -162,9 +171,31 @@ export async function estimateContrast(
 
     const range = samples.length > 0 && percentiles(concat(samples));
     if (!range) continue; // Leave this channel at its full-range default.
+
     const window = model.channels[channel].window;
-    window.start = Math.max(window.min, Math.floor(range.low));
-    window.end = Math.min(window.max, Math.ceil(range.high));
+    // The pixel type's own limits, before they are narrowed to the data.
+    const floor = window.min;
+    const ceiling = window.max;
+
+    window.start = Math.max(floor, Math.floor(range.low));
+    window.end = Math.min(ceiling, Math.ceil(range.high));
+    // What the contrast control spans. A 16-bit type can hold 65535, but this
+    // channel reaches three thousand, and a slider stretched over the type
+    // instead of the data cannot be dragged anywhere useful — every setting
+    // within reach looks the same, which reads as the range doing nothing.
+    //
+    // Generous headroom around the display range, but never past the data, and
+    // never governed by the data's extreme: one saturated pixel is enough to
+    // put the far end back at 65535 and make the slider useless again.
+    const spread = Math.max(1, range.high - range.low);
+    window.min = Math.max(
+      floor,
+      Math.min(window.start, Math.floor(Math.max(range.min, range.low - spread))),
+    );
+    window.max = Math.min(
+      ceiling,
+      Math.max(window.end + 1, Math.ceil(Math.min(range.max, range.high + 4 * spread))),
+    );
   }
 }
 
