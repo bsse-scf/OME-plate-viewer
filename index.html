@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yokogawa CQ3000 In-Browser Viewer</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <meta
+      name="description"
+      content="View Yokogawa CQ3000 high-content screening data in the browser. Nothing is uploaded and nothing is converted."
+    />
+  </head>
+  <body>
+    <div class="page">
+      <header class="masthead">
+        <div class="masthead-row">
+          <h1>Yokogawa CQ3000 In-Browser Viewer</h1>
+          <button type="button" id="about-open" class="about-button" aria-haspopup="dialog">
+            About
+          </button>
+        </div>
+        <p class="tagline">
+          Drop a CQ3000 measurement folder to browse the plate in Neuroglancer — wells
+          stitched, channels coloured, in place on the plate.
+        </p>
+        <p class="assurance">
+          Data is not uploaded to remote servers and stays on the local machine. Nothing
+          is written, converted or copied.
+        </p>
+      </header>
+
+      <main>
+        <section class="dropzone" id="dropzone" tabindex="0" aria-label="Drop a dataset folder">
+          <span class="dropzone-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3.25" y="3.25" width="17.5" height="17.5" rx="2.5" />
+              <circle cx="8.5" cy="8.5" r="1.6" />
+              <circle cx="15.5" cy="8.5" r="1.6" />
+              <circle cx="8.5" cy="15.5" r="1.6" />
+              <circle cx="15.5" cy="15.5" r="1.6" />
+            </svg>
+          </span>
+          <h2>Open a measurement</h2>
+          <p class="dropzone-hint">Drop a folder</p>
+          <p class="dropzone-body">
+            The measurement folder itself — the one holding the
+            <code>.ome.xml</code> and the <code>Image/</code> directory. It is read
+            where it sits; no copy is made and the folder is never modified.
+          </p>
+          <button type="button" class="browse" id="browse">Choose a folder…</button>
+        </section>
+
+        <section id="status" class="status" aria-live="polite" hidden></section>
+
+        <section id="dataset" class="dataset" hidden>
+          <div class="dataset-head">
+            <h2 id="dataset-name"></h2>
+            <button type="button" id="close-dataset" class="link-button">Close dataset</button>
+          </div>
+          <dl class="facts" id="dataset-facts"></dl>
+          <div class="channel-swatches" id="dataset-channels"></div>
+
+          <div class="plate-map">
+            <p class="plate-legend" id="plate-legend"></p>
+            <div class="plate" id="plate" role="group" aria-label="Plate map"></div>
+          </div>
+
+          <div class="actions">
+            <button type="button" id="open-plate" class="is-primary">Open the whole plate</button>
+          </div>
+        </section>
+      </main>
+
+      <footer class="colophon">
+        <div class="site-footer">
+          <div class="institution-logos" aria-label="ETH Zürich facilities">
+            <a href="https://ethz.ch/" target="_blank" rel="noopener" aria-label="ETH Zürich">
+              <img src="/src/ui/logos/eth_logo_kurz_pos.svg" alt="ETH Zürich" />
+            </a>
+            <a
+              href="https://bsse.ethz.ch/scf/"
+              target="_blank"
+              rel="noopener"
+              aria-label="D-BSSE Single Cell Facility"
+            >
+              <img src="/src/ui/logos/SCF_Logo.svg" alt="Single Cell Facility" />
+            </a>
+            <a
+              href="https://bsse.ethz.ch/laf/"
+              target="_blank"
+              rel="noopener"
+              aria-label="D-BSSE Lab Automation Facility"
+            >
+              <img src="/src/ui/logos/LAF_Logo.png" alt="Lab Automation Facility" />
+            </a>
+          </div>
+
+          <a
+            class="repo-link"
+            href="https://github.com/bsse-scf/browser_yokogawa_cq3000"
+            target="_blank"
+            rel="noopener"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+              />
+            </svg>
+            <span>Source on GitHub</span>
+          </a>
+        </div>
+      </footer>
+    </div>
+
+    <dialog id="about" class="about" aria-labelledby="about-title">
+      <div class="about-head">
+        <h2 id="about-title">About this viewer</h2>
+        <button type="button" id="about-close" class="about-close" aria-label="Close">&times;</button>
+      </div>
+
+      <section class="about-section">
+        <h3>What it does</h3>
+        <p>
+          A CQ3000 measurement is one XML file describing the plate and a folder of
+          single-plane TIFFs — tens of thousands of them, hundreds of gigabytes. Nothing
+          reads that directly.
+        </p>
+        <p>
+          This page reads the XML, works out where every field of view sits, and presents
+          each well as a <strong>virtual OME-Zarr image</strong>: metadata generated on
+          demand, chunks answered by slicing the TIFFs where they already are. A Service
+          Worker serves those images over ordinary same-origin HTTP, and Neuroglancer
+          opens them like any other OME-Zarr.
+        </p>
+        <pre class="about-tree">20251027T134435_10X/     the folder you drop
+├─ 00013515.ome.xml      what gets read
+├─ Image/                stays exactly where it is
+│  └─ W0001F0001T0001Z001C1.tif …
+└─ 35_….wpp              plate geometry</pre>
+        <p>
+          Nothing is uploaded, nothing is converted and nothing is written. Close the tab
+          and every trace of it is gone.
+        </p>
+      </section>
+
+      <section class="about-section">
+        <h3>How the plate is put together</h3>
+        <ul>
+          <li>
+            <strong>Fields into wells</strong> — the stage positions of a well's fields
+            are clustered back onto their acquisition grid, and each field is cropped to
+            the grid step so neighbours abut. One field is one chunk; nothing is blended
+            and no pixel is resampled at full resolution.
+          </li>
+          <li>
+            <strong>Wells onto the plate</strong> — each virtual image carries a
+            <code>translation</code> putting it at its real position on the plate, taken
+            from the well pitch in the vendor's plate file. Opening several wells at once
+            assembles them into one plate.
+          </li>
+          <li>
+            <strong>Coarser levels</strong> — every image also offers reduced resolutions,
+            built by sampling rows and averaging columns, so a plate overview reads a
+            fraction of the data instead of all of it.
+          </li>
+          <li>
+            <strong>Channels</strong> — colours, names and display ranges come from the
+            acquisition's own metadata, so Neuroglancer opens one additive layer per
+            channel with the right colour already set.
+          </li>
+        </ul>
+      </section>
+
+      <section class="about-section">
+        <h3>Using the viewer</h3>
+        <div class="keys">
+          <kbd>drag</kbd><span>Pan</span>
+          <kbd>scroll</kbd><span>Move through z</span>
+          <kbd>ctrl + scroll</kbd><span>Zoom</span>
+          <kbd>shift + drag</kbd><span>Rotate, in the 3-D panel</span>
+          <kbd>Esc</kbd><span>Leave the viewer and come back to the plate map</span>
+        </div>
+        <p>
+          Click a well on the plate map to open just that well, which loads immediately.
+          Opening the whole plate is the same data at a coarser level — it streams in
+          well by well and is worth the wait once.
+        </p>
+      </section>
+
+      <section class="about-section">
+        <h3>Which browsers work</h3>
+        <p>
+          Chrome, Edge, Opera, Brave and other Chromium-based browsers.
+        </p>
+        <p>
+          Nothing is uploaded, so the page has to read the dropped folder where it
+          already sits — which needs the File System Access API — and then serve it to
+          Neuroglancer through a Service Worker. Firefox and Safari give a page only a
+          private storage area of its own, never a folder on your disk, so there is
+          nothing for this viewer to open there.
+        </p>
+      </section>
+
+      <section class="about-section">
+        <h3>Where to go next</h3>
+        <ul class="about-links">
+          <li>
+            <a href="https://ngff.openmicroscopy.org/" target="_blank" rel="noopener">
+              The OME-Zarr specification
+            </a>
+            <span>The format the wells are presented as.</span>
+          </li>
+          <li>
+            <a href="https://github.com/google/neuroglancer" target="_blank" rel="noopener">
+              Neuroglancer
+            </a>
+            <span>The viewer, bundled here unmodified.</span>
+          </li>
+          <li>
+            <a href="https://github.com/bsse-scf/ome-zarr-portal" target="_blank" rel="noopener">
+              OME-Zarr Portal
+            </a>
+            <span>The same idea for data that is already OME-Zarr.</span>
+          </li>
+          <li>
+            <a href="https://forum.image.sc/" target="_blank" rel="noopener">
+              image.sc forum
+            </a>
+            <span>Where the community answers questions.</span>
+          </li>
+        </ul>
+      </section>
+    </dialog>
+
+    <div class="viewer" id="viewer" hidden>
+      <div class="viewer-bar">
+        <button type="button" id="viewer-back">&larr; Back</button>
+        <span id="viewer-title" class="viewer-title"></span>
+        <span class="viewer-spacer"></span>
+        <label class="viewer-title" for="viewer-select">Showing</label>
+        <select id="viewer-select" class="viewer-select" aria-label="Which wells to show"></select>
+        <a id="viewer-open" href="#" target="_blank" rel="noopener">Open in a new tab</a>
+      </div>
+      <iframe id="viewer-frame" class="viewer-frame" title="Neuroglancer"></iframe>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,688 @@
+/**
+ * Page styling.
+ *
+ * One column, one accent, hairline borders. The page is mostly type and
+ * whitespace: the drop target and, once a dataset is open, the plate map are
+ * the only things that need to be noticed, so everything else — status,
+ * summary, colophon — is deliberately quiet.
+ *
+ * Colour is declared only as tokens, once for light and once for dark, so the
+ * whole page follows the system theme and no rule below ever names a colour.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --bg: #fbfbfa;
+  --surface: #ffffff;
+  --surface-sunken: #f5f5f3;
+  --border: #e5e4e0;
+  --border-strong: #d2d1cc;
+  --border-danger: #e8c9c5;
+
+  --text: #191a1d;
+  --text-muted: #6a6e76;
+
+  --accent: #2f56c8;
+  --accent-tint: #f0f3fe;
+  --on-accent: #ffffff;
+
+  --danger: #b23026;
+  --warn: #8a5a00;
+  --ok: #2f7d4f;
+
+  /* Barely there: enough to lift a card off a white page. */
+  --shadow: 0 1px 2px rgb(16 18 22 / 5%);
+
+  --radius: 14px;
+  --radius-sm: 9px;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1013;
+    --surface: #16181d;
+    --surface-sunken: #1b1e25;
+    --border: #262a32;
+    --border-strong: #343945;
+    --border-danger: #4a2f2c;
+
+    --text: #e7e8ec;
+    --text-muted: #969ba6;
+
+    --accent: #8fb0ff;
+    --accent-tint: #1a2233;
+    --on-accent: #0f1013;
+
+    --danger: #ff9b93;
+    --warn: #e5bd6b;
+    --ok: #7fd39b;
+
+    /* A border already separates surfaces here; a shadow would only muddy them. */
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--accent-tint); }
+
+:where(a) { color: var(--accent); text-underline-offset: 0.2em; }
+
+:where(a, button, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+[hidden] { display: none !important; }
+
+.page {
+  max-width: 60rem;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(2.5rem, 7vw, 5rem) 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+/*
+ * `margin-block: auto` centres the drop target in whatever space the page has
+ * left over. On a tall empty viewport that reads as a composition rather than
+ * as content stranded at the top; once a dataset pushes the page past the fold,
+ * the auto margins collapse and it behaves like an ordinary document.
+ */
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-block: auto;
+}
+
+/* --------------------------------------------------------------- masthead */
+
+.masthead-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.masthead h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(1.9rem, 1.2rem + 2vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.tagline {
+  margin: 0;
+  max-width: 44rem;
+  font-size: 1.05rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+/*
+ * The privacy claim is the reason this viewer exists, so it gets the page's
+ * one spot of colour — a 5px dot, and nothing else.
+ */
+.assurance {
+  margin: 1.1rem 0 0;
+  max-width: 44rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+/* Inline rather than a flex item, so the sentence stays one run of text. */
+.assurance::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 0.55rem;
+  border-radius: 50%;
+  background: var(--ok);
+  translate: 0 -0.15em;
+}
+
+/* -------------------------------------------------------------- drop zone */
+
+/*
+ * A dashed hairline says "drop here" without shouting. Everything about the
+ * card is flat until a drag arrives, at which point the border goes solid
+ * accent and the surface tints — the only real state change on the page.
+ */
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 2rem;
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.dropzone.is-over {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.dropzone.is-busy { opacity: 0.55; pointer-events: none; }
+
+.dropzone-icon { display: block; margin-bottom: 0.9rem; color: var(--text-muted); }
+.dropzone.is-over .dropzone-icon { color: var(--accent); }
+.dropzone-icon svg { display: block; }
+
+.dropzone h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dropzone-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dropzone-body {
+  margin: 0.7rem 0 1.5rem;
+  max-width: 46ch;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+/* ----------------------------------------------------------------- about */
+
+/*
+ * A quiet control: findable at the top right, and otherwise out of the way of
+ * the one thing the page is for.
+ */
+.about-button {
+  flex: none;
+  margin-top: 0.4rem;
+  padding: 0.3rem 0.8rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.about-button:hover { border-color: var(--border-strong); color: var(--text); }
+
+.about {
+  width: min(40rem, calc(100vw - 2.5rem));
+  max-height: calc(100vh - 4rem);
+  margin: auto;
+  padding: 1.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px -30px rgb(0 0 0 / 55%);
+}
+
+.about::backdrop { background: rgb(8 9 11 / 55%); backdrop-filter: blur(2px); }
+
+.about-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.about-head h2 { margin: 0; font-size: 1.1rem; font-weight: 600; letter-spacing: -0.01em; }
+
+.about-close {
+  padding: 0 0.3rem;
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.about-close:hover { color: var(--text); }
+
+.about-section + .about-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.about-section h3 { margin: 0 0 0.5rem; font-size: 0.95rem; font-weight: 600; }
+
+.about-section p {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+.about-section ul {
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.about-section li {
+  padding-left: 1rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+  /* A hairline tick instead of a bullet: quieter, and it lines the list up. */
+  background: linear-gradient(var(--border-strong), var(--border-strong)) 0 0.65em / 5px 1px no-repeat;
+}
+
+.about-section li strong { color: var(--text); font-weight: 550; }
+
+.about-links { gap: 0.85rem; }
+.about-links li { display: grid; gap: 0.1rem; padding-left: 0; background: none; }
+.about-links a { font-size: 0.9rem; }
+.about-links span { font-size: 0.85rem; color: var(--text-muted); }
+
+.about code,
+.status code,
+.notes code {
+  padding: 0.1em 0.35em;
+  font-family: var(--mono);
+  font-size: 0.86em;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.about-tree {
+  margin: 0.9rem 0 0;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.keys {
+  margin: 0.6rem 0 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.9rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.keys kbd {
+  justify-self: start;
+  padding: 0.05em 0.45em;
+  font-family: var(--mono);
+  font-size: 0.8em;
+  color: var(--text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.browse,
+.actions button,
+.viewer-bar button,
+.viewer-bar a {
+  padding: 0.45rem 0.85rem;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.browse:hover,
+.actions button:hover,
+.viewer-bar button:hover,
+.viewer-bar a:hover { border-color: var(--border-strong); color: var(--accent); }
+
+/* The action the page is steering towards leads; the alternatives don't. */
+.actions button.is-primary {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.actions button.is-primary:hover { color: var(--on-accent); filter: brightness(1.08); }
+
+.link-button {
+  padding: 0;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  text-decoration-color: var(--border-strong);
+}
+
+.link-button:hover { color: var(--accent); text-decoration-color: currentColor; }
+
+/* ----------------------------------------------------------------- status */
+
+.status {
+  padding: 1.25rem 1.35rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* `:where` keeps this at zero specificity, so the rules below simply win. */
+.status :where(p) { margin: 0.2rem 0; color: var(--text-muted); font-size: 0.95rem; }
+
+.status-headline { font-size: 1rem; font-weight: 550; color: var(--text); }
+
+.status.is-error { border-color: var(--border-danger); }
+.status.is-error .status-headline { color: var(--danger); }
+
+.status-progress { margin-top: 0.7rem; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+
+/* Notes are diagnostics: legible, scannable, never louder than the headline. */
+.notes {
+  display: grid;
+  gap: 1px;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.notes li {
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-sunken);
+  font-size: 0.86rem;
+  color: var(--text-muted);
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.1rem; }
+
+/* ---------------------------------------------------------------- dataset */
+
+.dataset {
+  padding: 1.35rem 1.5rem 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.dataset-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.dataset-head h2 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.01em; }
+
+/* A run of `label value` pairs; on a narrow screen they wrap into a list. */
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.75rem;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  font-size: 0.88rem;
+}
+
+.facts div { display: flex; gap: 0.45rem; align-items: baseline; }
+.facts dt { color: var(--text-muted); }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+.channel-swatches { display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem; margin-top: 0.9rem; }
+
+.channel-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.channel-swatch i {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  /* Vendor colours can be near-black, so a hairline keeps the dot visible. */
+  box-shadow: inset 0 0 0 1px rgb(128 128 128 / 45%);
+}
+
+/* -------------------------------------------------------------- plate map */
+
+.plate-map { margin-top: 1.35rem; }
+
+.plate-legend {
+  margin: 0 0 0.6rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/*
+ * The grid is one cell per plate position plus a header row and column, so a
+ * 96-well plate is 13 x 9. Cells are square and shrink to fit, which keeps a
+ * 384-well plate on screen without a second layout.
+ */
+.plate {
+  display: grid;
+  grid-template-columns: auto repeat(var(--columns), minmax(0, 1fr));
+  gap: clamp(2px, 0.4vw, 5px);
+  max-width: 44rem;
+}
+
+.plate-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(0.5rem, 1.1vw, 0.72rem);
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.well {
+  aspect-ratio: 1;
+  padding: 0;
+  font: inherit;
+  font-size: clamp(0.45rem, 1vw, 0.68rem);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+.well.is-imaged {
+  color: var(--accent);
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  cursor: pointer;
+  transition: background-color 100ms ease, transform 100ms ease;
+}
+
+.well.is-imaged:hover { background: var(--accent); color: var(--on-accent); }
+.well.is-imaged:active { transform: scale(0.92); }
+.well.is-imaged.is-current { background: var(--accent); color: var(--on-accent); }
+
+/* --------------------------------------------------------------- colophon */
+
+.colophon {
+  margin-top: auto;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/*
+ * The footer is one centred row: who runs the service, then where its source
+ * lives. A rule between them keeps the two apart without a second line.
+ */
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+}
+
+.institution-logos {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.75rem;
+  align-items: center;
+}
+
+.institution-logos a { display: inline-flex; align-items: center; }
+.institution-logos img { display: block; width: auto; max-width: 100%; object-fit: contain; }
+
+/* Heights are per-logo: the three wordmarks have different optical weights. */
+.institution-logos a:nth-of-type(1) img { height: 32px; }
+.institution-logos a:nth-of-type(2) img { height: 38px; }
+.institution-logos a:nth-of-type(3) img { height: 35px; }
+
+.repo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding-left: 2rem;
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 120ms ease;
+}
+
+.repo-link:hover { color: var(--accent); }
+.repo-link svg { flex: none; }
+
+@media (max-width: 760px) {
+  .site-footer { gap: 1.25rem; }
+
+  /* Stacked rather than side by side, so the rule between them would mislead. */
+  .repo-link { padding-left: 0; border-left: 0; }
+
+  /* Smaller marks, so three of them still fit on a phone. */
+  .institution-logos { gap: 1.25rem; }
+  .institution-logos a:nth-of-type(1) img { height: 26px; }
+  .institution-logos a:nth-of-type(2) img { height: 31px; }
+  .institution-logos a:nth-of-type(3) img { height: 29px; }
+}
+
+/*
+ * All three marks are dark artwork on transparency, which a dark page would
+ * swallow. Inverting flips the black lettering to white but also takes every
+ * hue to its opposite; rotating the hue a full half turn afterwards puts them
+ * back, so the ETH and facility names read as white while the SCF dots stay
+ * green and red and the LAF wordmark stays blue. One declaration, no light
+ * plate under the row, and it covers the PNG as well as the two SVGs.
+ */
+@media (prefers-color-scheme: dark) {
+  .institution-logos img { filter: invert(1) hue-rotate(180deg); }
+}
+
+/* ----------------------------------------------------------------- viewer */
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+}
+
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.55rem 0.9rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.viewer-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.viewer-spacer { flex: 1; }
+
+.viewer-select {
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  max-width: 14rem;
+}
+
+.viewer-frame { flex: 1; width: 100%; border: 0; background: #000; }

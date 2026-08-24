@@ -43,8 +43,11 @@ Essentially, except a few differences, this project is a combinatin of the follo
 - virtual OME-Zarr images carry OMERO channel metadata to allow for proper channel coloring in neuroglancer
 - OME-Zarr is only a transactional format for the purpose of visualization in neuroglancer. The original data is not modified in any way.
 - Special emphasis needs to be on memory usage and performance, since the data can be very large. The website should be able to handle large datasets without crashing or slowing down too much.
+- For memory reduction in neuroglancer, OME-Zarr images should contain different resolution levels (using the same levels as the ones used by multiview-stitcher, with downsampling method to be chosen optimally)
 - potentially useful: working with multi-layer sources in neuroglancer
 - In the future, more viewers could be added, but for now neuroglancer is the only one
+- multi-channel data is supported
+
 
 ## Example data
 
