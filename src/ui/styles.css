@@ -119,11 +119,17 @@ main {
 
 /* --------------------------------------------------------------- masthead */
 
+/*
+ * Centred, like everything below it. The About control is taken out of the
+ * flow so the title centres on the page rather than on what is left of it.
+ */
+.masthead { text-align: center; }
+
 .masthead-row {
+  position: relative;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
+  justify-content: center;
+  padding: 0 5rem;
 }
 
 .masthead h1 {
@@ -135,7 +141,7 @@ main {
 }
 
 .tagline {
-  margin: 0;
+  margin: 0 auto;
   max-width: 44rem;
   font-size: 1.05rem;
   color: var(--text-muted);
@@ -147,7 +153,7 @@ main {
  * one spot of colour — a 5px dot, and nothing else.
  */
 .assurance {
-  margin: 1.1rem 0 0;
+  margin: 1.1rem auto 0;
   max-width: 44rem;
   font-size: 0.9rem;
   color: var(--text-muted);
@@ -176,9 +182,12 @@ main {
 .dropzone {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  /* Centred: the card is a target, and a target reads as one when it is
+     symmetrical. */
+  align-items: center;
+  text-align: center;
   gap: 0.35rem;
-  padding: 2rem;
+  padding: 2.5rem 2rem;
   background: var(--surface);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
@@ -215,7 +224,7 @@ main {
 }
 
 .dropzone-body {
-  margin: 0.7rem 0 1.5rem;
+  margin: 0.7rem auto 1.5rem;
   max-width: 46ch;
   font-size: 0.92rem;
   color: var(--text-muted);
@@ -229,8 +238,9 @@ main {
  * the one thing the page is for.
  */
 .about-button {
-  flex: none;
-  margin-top: 0.4rem;
+  position: absolute;
+  top: 0.5rem;
+  right: 0;
   padding: 0.3rem 0.8rem;
   font: inherit;
   font-size: 0.82rem;
@@ -419,6 +429,7 @@ main {
 
 .status {
   padding: 1.25rem 1.35rem;
+  text-align: center;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -448,14 +459,22 @@ main {
   overflow: hidden;
 }
 
+/* Diagnostics read as a list, so they stay ranged left. */
 .notes li {
   padding: 0.5rem 0.75rem;
+  text-align: left;
   background: var(--surface-sunken);
   font-size: 0.86rem;
   color: var(--text-muted);
 }
 
-.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.1rem; }
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.35rem;
+}
 
 /* ---------------------------------------------------------------- dataset */
 
@@ -475,12 +494,18 @@ main {
   gap: 0.5rem 1rem;
 }
 
+/* The plate is the centre of gravity once a measurement is open, so the card
+   composes around it rather than stacking against its left edge. */
+.dataset { text-align: center; }
+.dataset-head { text-align: left; }
+
 .dataset-head h2 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.01em; }
 
 /* A run of `label value` pairs; on a narrow screen they wrap into a list. */
 .facts {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 0.35rem 1.75rem;
   margin: 0.9rem 0 0;
   padding: 0;
@@ -491,7 +516,13 @@ main {
 .facts dt { color: var(--text-muted); }
 .facts dd { margin: 0; font-variant-numeric: tabular-nums; }
 
-.channel-swatches { display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem; margin-top: 0.9rem; }
+.channel-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem 0.9rem;
+  margin-top: 0.9rem;
+}
 
 .channel-swatch {
   display: inline-flex;
@@ -511,10 +542,15 @@ main {
 
 /* -------------------------------------------------------------- plate map */
 
-.plate-map { margin-top: 1.35rem; }
+.plate-map {
+  margin-top: 1.35rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 
 .plate-legend {
-  margin: 0 0 0.6rem;
+  margin: 0 0 0.7rem;
   font-size: 0.82rem;
   color: var(--text-muted);
 }
@@ -528,6 +564,7 @@ main {
   display: grid;
   grid-template-columns: auto repeat(var(--columns), minmax(0, 1fr));
   gap: clamp(2px, 0.4vw, 5px);
+  width: 100%;
   max-width: 44rem;
 }
 
@@ -617,6 +654,12 @@ main {
 
 .repo-link:hover { color: var(--accent); }
 .repo-link svg { flex: none; }
+
+@media (max-width: 620px) {
+  /* No room for the title and the control side by side; stack them. */
+  .masthead-row { flex-direction: column-reverse; align-items: center; padding: 0; gap: 0.75rem; }
+  .about-button { position: static; }
+}
 
 @media (max-width: 760px) {
   .site-footer { gap: 1.25rem; }
