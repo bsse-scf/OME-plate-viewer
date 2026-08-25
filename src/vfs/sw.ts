@@ -32,7 +32,7 @@ import { readPlaneLayout, type PlaneLayout } from '../yokogawa/tiff';
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
 /**
- * The path this worker controls, e.g. `/` or `/browser_yokogawa_cq3000/`.
+ * The path this worker controls, e.g. `/` or `/OME-plate-viewer/`.
  * Taking it from the registration scope rather than a build-time constant is
  * what lets one build be deployed at any subpath, GitHub Pages included.
  */

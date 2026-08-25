@@ -365,7 +365,7 @@ export function startApp(): void {
       if (busy) return;
       let handle: FileSystemDirectoryHandle;
       try {
-        handle = await window.showDirectoryPicker!({ mode: 'read', id: 'cq3000-viewer' });
+        handle = await window.showDirectoryPicker!({ mode: 'read', id: 'ome-plate-viewer' });
       } catch {
         return; // The picker was dismissed.
       }

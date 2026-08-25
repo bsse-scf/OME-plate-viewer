@@ -14,7 +14,7 @@ const at = (p: string) => fileURLToPath(new URL(p, import.meta.url));
  */
 function devServiceWorker(): Plugin {
   return {
-    name: 'cq3000:dev-service-worker',
+    name: 'ome-plate-viewer:dev-service-worker',
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {

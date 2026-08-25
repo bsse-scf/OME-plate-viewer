@@ -1,12 +1,16 @@
 # Implementation
 
-How a dropped CQ3000 folder becomes a plate in Neuroglancer, and why it is
-built this way.
+How a dropped plate folder becomes a plate in Neuroglancer, and why it is built
+this way.
+
+The reader is Yokogawa CQ3000 specific today and lives in `src/yokogawa/`;
+everything below it works from the model that reader produces, so a second
+instrument would be a sibling of that directory and nothing else.
 
 ```
                     Landing page  (index.html, src/ui/)
                           │
-              drop a measurement folder
+                 drop a plate folder
                           │
                     FileSystemDirectoryHandle
                           │
@@ -557,7 +561,7 @@ so a cropped or reduced chunk can be checked arithmetically. A
 `FileSystemDirectoryHandle` adapter over `node:fs` (`tests/node-handles.ts`)
 means the code under test is the code that runs in the worker.
 
-Setting `CQ3000_DATASETS` to one or more measurement folders adds a pass over
+Setting `CQ3000_DATASETS` to one or more plate folders adds a pass over
 real acquisitions: the model is built, a plane's TIFF directory is checked
 against what the fast path assumes, and one chunk is read at every level. The
 synthetic fixture pins the arithmetic; this pins the assumptions.

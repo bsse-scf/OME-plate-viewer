@@ -7,7 +7,7 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <meta
       name="description"
-      content="View Yokogawa CQ3000 high-content screening data in the browser. Nothing is uploaded nor converted."
+      content="View high-content screening plates in the browser. No installation, nothing uploaded nor converted."
     />
   </head>
   <body>
@@ -20,7 +20,7 @@
           </button>
         </div>
         <p class="tagline">
-          Drop a CQ3000 measurement folder to browse and view the plate in the browser.
+          Drop a plate folder to browse and view the plate in the browser.
         </p>
         <p class="assurance">
           Data is not uploaded to remote servers and stays on the local machine. Nothing
@@ -39,12 +39,12 @@
               <circle cx="15.5" cy="15.5" r="1.6" />
             </svg>
           </span>
-          <h2>Open a measurement</h2>
+          <h2>Open a plate</h2>
           <p class="dropzone-hint">Drop a folder</p>
           <p class="dropzone-body">
-            The measurement folder itself: the one holding the
-            <code>.ome.xml</code> and the <code>Image/</code> directory. It is read
-            where it sits; no copy is made and the folder is never modified.
+            The plate folder itself: the one holding the <code>.ome.xml</code> and the
+            <code>Image/</code> directory. It is read where it sits; no copy is made and
+            the folder is never modified.
           </p>
           <button type="button" class="browse" id="browse">Choose a folder…</button>
         </section>
@@ -96,7 +96,7 @@
 
           <a
             class="repo-link"
-            href="https://github.com/bsse-scf/browser_yokogawa_cq3000"
+            href="https://github.com/m-albert/OME-plate-viewer"
             target="_blank"
             rel="noopener"
           >
@@ -139,7 +139,7 @@
       <section class="about-section">
         <h3>What it does</h3>
         <p>
-          A CQ3000 measurement is one XML file describing the plate and a folder of
+          A screening run leaves one XML file describing the plate and a folder of
           single-plane TIFFs, tens of thousands of them, hundreds of gigabytes. Nothing
           reads that directly.
         </p>
@@ -199,6 +199,23 @@
         </ul>
       </section>
 
+
+      <section class="about-section">
+        <h3>Which plates work</h3>
+        <p>
+          The viewer reads a plate folder holding OME-XML metadata beside single-plane
+          TIFFs, which is what a high-content screening run typically leaves behind. It
+          works out the plate, its wells and every field of view from that metadata
+          alone.
+        </p>
+        <p>
+          So far it has been developed and tested against
+          <strong>Yokogawa CQ3000</strong> data. Other instruments that write OME
+          metadata in the same shape should follow, but have not been tried, and the
+          reader will say so rather than guess if it meets something it does not
+          recognise.
+        </p>
+      </section>
 
       <section class="about-section">
         <h3>Which browsers work</h3>

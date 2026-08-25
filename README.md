@@ -1,56 +1,45 @@
-# Yokogawa CQ3000 In-Browser Viewer
+# OME Plate Viewer
 
-A static web page for looking at **local** Yokogawa CQ3000 high-content
-screening data. Drop a measurement folder and the plate opens in
-[Neuroglancer][ng] — wells stitched, channels coloured, each one in its place on
-the plate.
+[![Open the viewer](https://img.shields.io/badge/open-the%20viewer-2f56c8?style=for-the-badge)](https://m-albert.github.io/OME-plate-viewer/)
 
-Nothing is uploaded. There is no backend, no conversion step and no install. The
-image data never leaves the machine it is already on: the page serves it to
-itself through a Service Worker.
+A static web page for looking at **local** high-content screening plates.
+
+- **No installation.** Open the link above to run the viewer in your browser. There is no
+  server and no backend.
+- **Your plates stay yours.** Drop a plate folder from your own disk and it is
+  read where it sits. Nothing is uploaded, nothing is written, nothing is
+  copied, and no converted second copy appears beside your data.
+- **For looking at raw OME plate data.** It is a viewer, not a pipeline: point
+  it at the raw microscope output and it shows you the plate.
+
+Drop a plate folder and it opens in [Neuroglancer][ng] with the fields of view
+assembled into wells, the channels coloured, and each well in its place on the
+plate. The image data never leaves the machine it is already on: the page serves
+it to itself through a Service Worker.
+
+So far it has been developed and tested against **Yokogawa CQ3000** data. The
+reader works from OME-XML metadata alone, so other instruments that write it in
+the same shape should follow, but have not been tried.
 
 ```
-        drop a measurement folder
+          drop a plate folder
                    │
           read the OME-XML                 src/yokogawa/
                    │
-       the measurement as a virtual
+        the plate as a virtual
           OME-Zarr plate                   src/yokogawa/zarr.ts
                    │
           Service Worker                   src/vfs/
                    │
-        <base>_zarr/<dataset>/<well>/…
+     <base>_zarr/<dataset>/<row>/<col>/…
                    │
             Neuroglancer                   neuroglancer/
 ```
 
-## Quick start
-
-```bash
-npm install
-npm run dev            # http://localhost:5173
-npm test               # reader and HTTP layer, in Node
-npm run test:browser   # end-to-end in real Chrome
-npm run build          # -> dist/
-```
-
-Requires a Chromium-based browser (see [Limitations](#limitations)).
-
-`test:browser` needs Chrome; `CHROME_PATH` overrides the default
-`/usr/bin/google-chrome`.
-
-`CQ3000_DATASETS` points either suite at real measurement folders, separated by
-`:`. The browser run then drops them on the page the way a user does:
-
-```bash
-CQ3000_DATASETS=/path/to/20260120T172222_20X_W npm test
-CQ3000_DATASETS=/path/to/20260120T172222_20X_W npm run test:browser
-```
-
 ## What to drop
 
-The measurement folder itself — the one holding the `.ome.xml` and the `Image/`
-directory:
+The plate folder itself: the one holding the `.ome.xml` and the `Image/`
+directory.
 
 ```
 20260120T172222_20X_W/
@@ -64,13 +53,13 @@ single well loads immediately; the plate streams in well by well.
 
 ## How it works
 
-A CQ3000 measurement is one XML file describing the plate and a folder of
+A screening run leaves one XML file describing the plate and a folder of
 single-plane TIFFs — tens of thousands of them, hundreds of gigabytes. Nothing
 reads that directly.
 
 This page reads the XML, works out where every field of view sits, and presents
-the measurement as a **virtual OME-Zarr plate** — `plate / row / column / field
-of view`, as the specification lays a screen out — with metadata generated on
+the plate as a **virtual OME-Zarr plate** — `plate / row / column / field of
+view`, as the specification lays a screen out — with metadata generated on
 demand and chunks answered by slicing the TIFFs where they already are. Those
 TIFFs are uncompressed and contiguous, so a plane is already in the layout a
 Zarr chunk wants: serving one is a byte range, not a decode.
@@ -78,8 +67,8 @@ Zarr chunk wants: serving one is a byte range, not a decode.
 Each well's image carries a `translation` putting it in its place on the plate,
 so opening several wells assembles a plate rather than a pile of images.
 
-`IMPLEMENTATION.md` describes all of it in detail — the grid recovery, the
-pyramid, the chunk pipeline, the worker, and the Neuroglancer state.
+`IMPLEMENTATION.md` describes all of it in detail: the grid recovery, the chunk
+pipeline, the worker, and the Neuroglancer state.
 
 ## Limitations
 
@@ -102,13 +91,6 @@ are unaffected.
 drop the folder again.
 
 **Read-only.** No writes, ever. The original data is not modified in any way.
-
-## Deploying
-
-`.github/workflows/deploy.yml` builds and publishes `dist/` on every push to
-`main`. Enable Pages for the repository with **Source: GitHub Actions**. The
-build uses a relative base, so one build works at an origin root and at a
-project subpath like `https://<user>.github.io/<repo>/`.
 
 ## Licensing
 

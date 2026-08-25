@@ -24,7 +24,7 @@ export function namespacePrefix(basePath: string, segment: string): string {
   return `${basePath}${segment}/`;
 }
 
-export const DB_NAME = 'yokogawa-cq3000-viewer';
+export const DB_NAME = 'ome-plate-viewer';
 export const DB_VERSION = 1;
 export const DATASET_STORE = 'datasets';
 

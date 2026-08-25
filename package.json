@@ -1,9 +1,9 @@
 {
-  "name": "browser-yokogawa-cq3000",
+  "name": "ome-plate-viewer",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "In-browser viewer for Yokogawa CQ3000 HCS data: reads a dropped dataset folder, exposes each well as a virtual OME-Zarr image, and shows the plate in Neuroglancer. No upload, no backend.",
+  "description": "In-browser viewer for high-content screening plates: drop a plate folder, and it is served as a virtual OME-Zarr plate and shown in Neuroglancer. No installation, no upload, no backend.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

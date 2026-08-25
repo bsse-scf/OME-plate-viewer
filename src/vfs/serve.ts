@@ -67,7 +67,7 @@ export function baseHeaders(extra?: Record<string, string>): Headers {
     // The bytes derive from live files the user may overwrite, and a cache
     // entry would outlive the dataset it belongs to.
     'Cache-Control': 'no-store',
-    'X-Local-Server': `cq3000-viewer/${SW_VERSION}`,
+    'X-Local-Server': `ome-plate-viewer/${SW_VERSION}`,
     ...extra,
   });
 }

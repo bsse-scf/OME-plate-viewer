@@ -385,7 +385,7 @@ async function checkAcquisition(page, base, path, chunkFailures) {
 async function checkCancellation(page) {
   const timings = await page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open('yokogawa-cq3000-viewer');
+      const request = indexedDB.open('ome-plate-viewer');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
