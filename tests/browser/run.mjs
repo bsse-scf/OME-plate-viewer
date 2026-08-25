@@ -656,6 +656,16 @@ async function main() {
       (await page.$('.neuroglancer-layer-panel')) === null,
       'the layer bar is hidden',
     );
+    // Neuroglancer can only reorder chunks it has not yet handed to `fetch`,
+    // so its request window has to stay near what the worker can work on.
+    const requestWindow = await page.evaluate(
+      () => window.viewer.dataContext.chunkQueueManager.capacities.download.itemLimit.value,
+    );
+    check(
+      requestWindow >= 8 && requestWindow <= 32,
+      'the viewer asks for no more chunks at a time than the worker can serve',
+      String(requestWindow),
+    );
     check(
       await page.evaluate(() =>
         Array.from(document.querySelectorAll('.neuroglancer-side-panel')).every(

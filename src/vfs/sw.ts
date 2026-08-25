@@ -23,7 +23,7 @@ import {
   type PortalMessage,
 } from './protocol';
 import { isNotFound, isTypeMismatch, openDatasetFile } from './files';
-import { createGate } from './gate';
+import { CHUNK_BUDGET_BYTES, createGate, MAX_CONCURRENT_CHUNKS } from './gate';
 import { serveZarr } from './serve';
 import { readPlaneLayout, type PlaneLayout } from '../yokogawa/tiff';
 
@@ -38,27 +38,6 @@ const sw = self as unknown as ServiceWorkerGlobalScope;
  */
 const BASE_PATH = new URL(sw.registration.scope).pathname;
 const ZARR_PREFIX = namespacePrefix(BASE_PATH, ZARR_SEGMENT);
-
-/**
- * How much chunk work may be in flight at once, in bytes of working set.
- *
- * Bounding memory by *bytes* rather than by a count is what lets acquisitions
- * of different shapes share one setting. A chunk is a field of view, and a
- * field of view is whatever the objective and camera made it: nine megabytes of
- * working set at 2000 px square, a fraction of that from a smaller sensor or a
- * tighter crop. Counting chunks would have to be tuned for the largest and
- * would then throttle the rest — and a single z step asks for hundreds of them,
- * each one an open of a file on a filesystem that may well be remote.
- */
-const CHUNK_BUDGET_BYTES = 96 * 1024 * 1024;
-
-/**
- * A ceiling on concurrent reads, whatever the budget says.
- *
- * Small chunks would otherwise fan out to hundreds of simultaneous opens, which
- * stops helping well before that and starts competing with itself.
- */
-const MAX_CONCURRENT_CHUNKS = 64;
 
 sw.addEventListener('install', () => {
   // Take over immediately: a freshly dropped folder should be readable without

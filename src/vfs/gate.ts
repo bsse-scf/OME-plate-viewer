@@ -21,6 +21,38 @@
  * cancelled before it started never reads anything at all.
  */
 
+/**
+ * How much chunk work may be in flight at once, in bytes of working set.
+ *
+ * Bounding memory by *bytes* rather than by a count is what lets acquisitions
+ * of different shapes share one setting. A chunk is a field of view, and a
+ * field of view is whatever the objective and camera made it: nine megabytes of
+ * working set at 2000 px square, a fraction of that from a smaller sensor.
+ */
+export const CHUNK_BUDGET_BYTES = 96 * 1024 * 1024;
+
+/**
+ * A ceiling on concurrent reads, whatever the budget says.
+ *
+ * Small chunks would otherwise fan out to hundreds of simultaneous opens, which
+ * stops helping well before that and starts competing with itself.
+ */
+export const MAX_CONCURRENT_CHUNKS = 64;
+
+/**
+ * How many chunks of a given cost this budget will run at once.
+ *
+ * Exported because the viewer needs to know: a client that asks for far more
+ * at a time than the server can work on turns its own priority queue into a
+ * queue it cannot reorder. See `integrations/neuroglancer.ts`.
+ */
+export function concurrentChunks(cost: number): number {
+  return Math.max(
+    1,
+    Math.min(MAX_CONCURRENT_CHUNKS, Math.floor(CHUNK_BUDGET_BYTES / Math.max(1, cost))),
+  );
+}
+
 export class AbortError extends Error {
   override readonly name = 'AbortError';
 

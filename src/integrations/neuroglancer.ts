@@ -25,6 +25,8 @@
  * viewer needs no configuration for it.
  */
 import { imageUrl, siteUrl } from '../vfs/client';
+import { concurrentChunks } from '../vfs/gate';
+import { workingSetBytes } from '../yokogawa/chunk';
 import { imageShape } from '../yokogawa/zarr';
 import type { PlateModel, Well } from '../yokogawa/types';
 
@@ -54,6 +56,47 @@ const NOMINAL_VIEWPORT = { width: 1280, height: 760 };
 /** Fraction of the window left as margin around the data. */
 const VIEWPORT_MARGIN = 1.08;
 
+/** Bounds on how many chunks the viewer may have in flight. */
+const REQUEST_WINDOW = { min: 8, max: 32 };
+
+/**
+ * How many chunks Neuroglancer may ask for at once.
+ *
+ * It defaults to a hundred, and that is the whole problem. Neuroglancer keeps
+ * the chunks it wants in a priority queue and reorders it as the view moves —
+ * but only for chunks it has not yet handed to `fetch`. Once a request is out,
+ * its place in the queue is fixed, and a hundred outstanding requests against a
+ * server that can work on ten is ninety it can no longer reorder.
+ *
+ * The effect is the one a user notices: after a plate view, zooming into a
+ * single field leaves the viewer waiting, because the one chunk it now needs
+ * was requested minutes ago and is somewhere in the backlog. Neuroglancer does
+ * cancel a download to free a slot, but with a hundred slots there is nothing
+ * to free, so nothing is cancelled either.
+ *
+ * So the window is set to what the worker can genuinely work on at once, and no
+ * more. Anything beyond that is a request Neuroglancer has committed to before
+ * it could know whether it still wants it, and the queue that matters stays the
+ * one it can still reorder.
+ */
+function requestWindow(model: PlateModel, wells: Well[]): number {
+  const cost = Math.max(
+    ...wells.map((well) => {
+      const field = well.fields[0];
+      return workingSetBytes(
+        {
+          strideY: well.strideY,
+          strideX: well.strideX,
+          fieldY: field.sizeY,
+          fieldX: field.sizeX,
+        },
+        model.bytesPerSample,
+      );
+    }),
+  );
+  return Math.min(REQUEST_WINDOW.max, Math.max(REQUEST_WINDOW.min, concurrentChunks(cost)));
+}
+
 /**
  * Black behind the slices instead of Neuroglancer's mid grey.
  *
@@ -69,6 +112,7 @@ export interface ViewerState {
   projectionScale: number;
   crossSectionBackgroundColor: string;
   projectionBackgroundColor: string;
+  concurrentDownloads: number;
   layers: Array<{ type: string; name: string; source: string | Array<{ url: string }> }>;
   selectedLayer?: { visible: boolean; layer: string };
   toolPalettes: Record<string, { query: string; visible: boolean }>;
@@ -148,6 +192,7 @@ export function buildViewerState(
     projectionScale: (deepest * 1.4) / canonical,
     crossSectionBackgroundColor: BACKGROUND,
     projectionBackgroundColor: BACKGROUND,
+    concurrentDownloads: requestWindow(model, wells),
     layers: [
       {
         type: 'auto',

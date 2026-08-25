@@ -287,6 +287,41 @@ about ten of the first and as many of the second as the concurrency ceiling
 allows. The cost is estimated from the geometry alone
 (`workingSetBytes`), so admission is decided before a file is opened.
 
+**The request window is kept shallow.** Neuroglancer holds the chunks it wants
+in a priority queue and reorders it as the view moves — but only for chunks it
+has not yet handed to `fetch`. Once a request is out, its place is fixed. Its
+default window is a hundred outstanding requests, which against a worker that
+can work on ten leaves ninety it can no longer reorder, and produces exactly the
+symptom a user notices: after a plate view, zooming into a single field leaves
+the viewer waiting, because the one chunk it now needs was requested long ago
+and sits somewhere in a backlog. Neuroglancer *does* abort a download to free a
+slot, but with a hundred slots there is never anything to free, so nothing is
+aborted either.
+
+So the viewer's state sets `concurrentDownloads` to exactly what the budget
+above will run, and no more. Anything beyond that is a request Neuroglancer has
+committed to before it could know whether it still wants it.
+
+Measured on the tiled example — open the plate, then jump to one well at full
+zoom:
+
+| window | requests outstanding at the jump | stale chunks still served | well fills in |
+| --- | --- | --- | --- |
+| 100 (the default) | 455 | 100 | 7.5 s |
+| 20 | 51 | 23 | 7.5 s |
+| **10 (what the worker runs)** | **19–33** | **10–14** | 7.5 s |
+
+Nothing is paid for the shallower window: filling a well is bandwidth-bound on
+this data, not concurrency-bound, and the time is the same at every setting.
+What changes is how much of that bandwidth goes on chunks nobody is waiting for
+— and whether Neuroglancer can still act on a change of mind. At the default it
+issued *no* new requests after the jump, because the chunk it then wanted had
+been committed long before; at ten it issues them, which is the queue working as
+designed.
+
+The two halves have to agree, which is why `concurrentChunks` is exported from
+`gate.ts` and the window is computed from it rather than picked.
+
 **Cancelled chunks stop being read.** Neuroglancer drops the chunks it no longer
 needs the moment the view moves, which is what keeps it responsive — but only if
 the other side listens. A queue that holds on to cancelled work makes the

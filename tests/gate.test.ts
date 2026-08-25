@@ -4,7 +4,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { AbortError, createGate } from '../src/vfs/gate';
+import {
+  AbortError,
+  CHUNK_BUDGET_BYTES,
+  concurrentChunks,
+  createGate,
+  MAX_CONCURRENT_CHUNKS,
+} from '../src/vfs/gate';
 
 /** A task that finishes when told to. */
 function deferred() {
@@ -16,6 +22,14 @@ function deferred() {
 }
 
 const MB = 1024 * 1024;
+
+test('reports how many chunks of a size it will run at once', () => {
+  // What the viewer's request window is sized against: too deep a window turns
+  // its priority queue into one it can no longer reorder.
+  assert.equal(concurrentChunks(CHUNK_BUDGET_BYTES / 10), 10);
+  assert.equal(concurrentChunks(CHUNK_BUDGET_BYTES * 2), 1, 'an oversized chunk still runs');
+  assert.equal(concurrentChunks(1), MAX_CONCURRENT_CHUNKS, 'capped, however small');
+});
 
 test('admits as many tasks as the byte budget allows', async () => {
   const gate = createGate({ budget: 10 * MB, maxConcurrent: 64 });
