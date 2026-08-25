@@ -172,7 +172,12 @@ export function startApp(): void {
 
   /* ---------------------------------------------------------------- about */
 
-  element<HTMLButtonElement>('about-open').addEventListener('click', () => about.showModal());
+  // Reachable from the page and from inside the viewer, which covers it. A
+  // modal dialog is drawn in the browser's top layer, so it lands above the
+  // viewer overlay without either knowing about the other.
+  for (const id of ['about-open', 'viewer-about']) {
+    element<HTMLButtonElement>(id).addEventListener('click', () => about.showModal());
+  }
   element<HTMLButtonElement>('about-close').addEventListener('click', () => about.close());
 
   // A modal dialog covers the whole layer, so a click reaches the dialog
@@ -190,7 +195,7 @@ export function startApp(): void {
     const label =
       wells.length === 1
         ? `Well ${wells[0].id}`
-        : `${model.folder} — ${plural(wells.length, 'well')}`;
+        : `${model.folder}: ${plural(wells.length, 'well')}`;
 
     viewerTitle.textContent = label;
     viewerOpen.href = url;
@@ -211,7 +216,9 @@ export function startApp(): void {
 
   viewerBack.addEventListener('click', closeViewer);
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !viewer.hidden) closeViewer();
+    // Escape closes the About panel first; it is what the key is for while it
+    // is open, and closing the viewer underneath it would be a surprise.
+    if (event.key === 'Escape' && !viewer.hidden && !about.open) closeViewer();
   });
 
   viewerSelect.addEventListener('change', () => {
@@ -264,7 +271,7 @@ export function startApp(): void {
       // Yield once so the progress line paints before the reads start.
       await new Promise((resolve) => setTimeout(resolve, 0));
       await estimateContrast(handle, model, (channel) =>
-        setProgress(`Sampling contrast — channel ${channel + 1} of ${model.sizeC}…`),
+        setProgress(`Sampling contrast, channel ${channel + 1} of ${model.sizeC}…`),
       );
 
       const dataset = await createDataset(handle, model);
@@ -309,7 +316,7 @@ export function startApp(): void {
     }
     if (directories.length > 1) {
       setStatus('Only the first folder was opened', {
-        detail: 'One measurement at a time — drop another to replace it.',
+        detail: 'One measurement at a time. Drop another to replace it.',
       });
     }
     await open(directories[0]);
@@ -396,7 +403,7 @@ export function startApp(): void {
     } else if (dropped > 0) {
       setStatus('The dataset from the previous session was closed.', {
         detail:
-          'Browsers do not carry folder permissions across a reload — drop it again to continue.',
+          'Browsers do not carry folder permissions across a reload. Drop it again to continue.',
       });
     }
   })();

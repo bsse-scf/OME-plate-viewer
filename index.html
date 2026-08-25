@@ -3,25 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Yokogawa CQ3000 In-Browser Viewer</title>
+    <title>In-Browser Plate Viewer</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <meta
       name="description"
-      content="View Yokogawa CQ3000 high-content screening data in the browser. Nothing is uploaded and nothing is converted."
+      content="View Yokogawa CQ3000 high-content screening data in the browser. Nothing is uploaded nor converted."
     />
   </head>
   <body>
     <div class="page">
       <header class="masthead">
         <div class="masthead-row">
-          <h1>Yokogawa CQ3000 In-Browser Viewer</h1>
+          <h1>In-Browser Plate Viewer</h1>
           <button type="button" id="about-open" class="about-button" aria-haspopup="dialog">
             About
           </button>
         </div>
         <p class="tagline">
-          Drop a CQ3000 measurement folder to browse the plate in Neuroglancer — fields
-          of view assembled into wells, channels coloured, wells in place on the plate.
+          Drop a CQ3000 measurement folder to browse and view the plate in the browser.
         </p>
         <p class="assurance">
           Data is not uploaded to remote servers and stays on the local machine. Nothing
@@ -43,7 +42,7 @@
           <h2>Open a measurement</h2>
           <p class="dropzone-hint">Drop a folder</p>
           <p class="dropzone-body">
-            The measurement folder itself — the one holding the
+            The measurement folder itself: the one holding the
             <code>.ome.xml</code> and the <code>Image/</code> directory. It is read
             where it sits; no copy is made and the folder is never modified.
           </p>
@@ -119,10 +118,29 @@
       </div>
 
       <section class="about-section">
+        <h3>Using the viewer</h3>
+        <div class="keys">
+          <kbd>drag</kbd><span>Pan</span>
+          <kbd>scroll</kbd><span>Move through z</span>
+          <kbd>ctrl + scroll</kbd><span>Zoom</span>
+          <kbd>Esc</kbd><span>Leave the viewer and come back to the plate map</span>
+        </div>
+        <p>
+          The viewer opens looking down at the plate, one panel. The buttons in the
+          panel's top corner switch to orthogonal or 3-D layouts when you want them.
+        </p>
+        <p>
+          Click a well on the plate map to open just that well, which loads immediately.
+          Opening the whole plate loads every well at full resolution, so it streams in
+          well by well and a plate of tiled wells is more than the viewer can hold.
+        </p>
+      </section>
+
+      <section class="about-section">
         <h3>What it does</h3>
         <p>
           A CQ3000 measurement is one XML file describing the plate and a folder of
-          single-plane TIFFs — tens of thousands of them, hundreds of gigabytes. Nothing
+          single-plane TIFFs, tens of thousands of them, hundreds of gigabytes. Nothing
           reads that directly.
         </p>
         <p>
@@ -143,8 +161,7 @@
         <pre class="about-tree">A/                       row A
 └─ 1/                    column 1, i.e. well A1
    └─ 0/                 the well's image
-      ├─ 0/              full resolution
-            └─ 0/           the pixels</pre>
+      └─ 0/              the pixels, at full resolution</pre>
         <p>
           Nothing is uploaded, nothing is converted and nothing is written. Close the tab
           and every trace of it is gone.
@@ -155,51 +172,33 @@
         <h3>How the plate is put together</h3>
         <ul>
           <li>
-            <strong>Fields of view into wells</strong> — the stage positions of a well's
+            <strong>Fields of view into wells.</strong> The stage positions of a well's
             fields are clustered back onto their acquisition grid, and each is cropped to
             the grid step so neighbours abut. One field of view is one chunk; nothing is
-            blended and no pixel is resampled at full resolution.
+            blended and no pixel is resampled.
           </li>
           <li>
-            <strong>Wells onto the plate</strong> — each well's image carries a
+            <strong>Wells onto the plate.</strong> Each well's image carries a
             <code>translation</code> putting it in its place on the plate, spaced by the
             widest well plus half again rather than by the millimetres of plastic a real
             plate would put between them. Opening several wells at once assembles them
             into one plate.
           </li>
           <li>
-            <strong>Full resolution only</strong> — there is no pyramid. The chunks are
+            <strong>Full resolution only.</strong> There is no pyramid. The chunks are
             the fields of view as acquired, so nothing is ever resampled and what you see
             is what the microscope recorded. Zoomed out, the viewer reduces on the GPU
             from what it has loaded, which means a whole plate of tiled wells is more
             than it can hold at once.
           </li>
           <li>
-            <strong>Channels</strong> — colours, names and display ranges are written as
+            <strong>Channels.</strong> Colours, names and display ranges are written as
             <code>omero</code> metadata, so Neuroglancer opens one additive layer per
             channel with the right colour already set.
           </li>
         </ul>
       </section>
 
-      <section class="about-section">
-        <h3>Using the viewer</h3>
-        <div class="keys">
-          <kbd>drag</kbd><span>Pan</span>
-          <kbd>scroll</kbd><span>Move through z</span>
-          <kbd>ctrl + scroll</kbd><span>Zoom</span>
-          <kbd>Esc</kbd><span>Leave the viewer and come back to the plate map</span>
-        </div>
-        <p>
-          The viewer opens looking down at the plate, one panel. The buttons in the
-          panel's top corner switch to orthogonal or 3-D layouts when you want them.
-        </p>
-        <p>
-          Click a well on the plate map to open just that well, which loads immediately.
-          Opening the whole plate is the same data at a coarser level — it streams in
-          well by well and is worth the wait once.
-        </p>
-      </section>
 
       <section class="about-section">
         <h3>Which browsers work</h3>
@@ -208,7 +207,7 @@
         </p>
         <p>
           Nothing is uploaded, so the page has to read the dropped folder where it
-          already sits — which needs the File System Access API — and then serve it to
+          already sits, which needs the File System Access API, and then serve it to
           Neuroglancer through a Service Worker. Firefox and Safari give a page only a
           private storage area of its own, never a folder on your disk, so there is
           nothing for this viewer to open there.
@@ -253,6 +252,7 @@
         <span class="viewer-spacer"></span>
         <label class="viewer-title" for="viewer-select">Showing</label>
         <select id="viewer-select" class="viewer-select" aria-label="Which wells to show"></select>
+        <button type="button" id="viewer-about" aria-haspopup="dialog">About</button>
         <a id="viewer-open" href="#" target="_blank" rel="noopener">Open in a new tab</a>
       </div>
       <iframe id="viewer-frame" class="viewer-frame" title="Neuroglancer"></iframe>
