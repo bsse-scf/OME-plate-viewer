@@ -73,8 +73,7 @@ the measurement as a **virtual OME-Zarr plate** — `plate / row / column / fiel
 of view`, as the specification lays a screen out — with metadata generated on
 demand and chunks answered by slicing the TIFFs where they already are. Those
 TIFFs are uncompressed and contiguous, so a plane is already in the layout a
-Zarr chunk wants: serving one is a byte range, not a decode, and serving a
-reduced one only reads the rows it samples.
+Zarr chunk wants: serving one is a byte range, not a decode.
 
 Each well's image carries a `translation` putting it in its place on the plate,
 so opening several wells assembles a plate rather than a pile of images.
@@ -93,6 +92,11 @@ Chromium browser.
 
 **Uncompressed TIFFs only.** A compressed or tiled plane is reported rather
 than decoded.
+
+**Full resolution only.** There is no pyramid, so a whole-plate view of a
+*tiled* acquisition asks for more than a viewer can hold and fills only part of
+the plate. Wells open one at a time regardless, and plates of single-field wells
+are unaffected.
 
 **Mounts do not survive a reload.** Folder permissions do not carry across one;
 drop the folder again.

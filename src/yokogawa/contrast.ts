@@ -37,12 +37,8 @@ const BINS = 4096;
  * quarter brightness; at 99 % it is one in twenty, which is what a field of
  * sparse nuclei should look like.
  *
- * The same number has to serve every resolution level, since Neuroglancer
- * applies one range to the whole multiscale. Measuring on the full-resolution
- * plane is the right basis for that: averaging into coarser levels barely
- * moves the bulk of the distribution — the fraction of pixels above a quarter
- * brightness holds at about 5 % from level 0 down to a 128-fold reduction —
- * even though it does pull the extreme maximum down by a factor of ten.
+ * The image is served at full resolution and nothing else, so the plane
+ * sampled here is the plane the viewer will show, whatever the zoom.
  */
 const LOW = 0.01;
 const HIGH = 0.99;

@@ -9,8 +9,8 @@
  * A/                      a row of the plate
  * A/1/.zattrs             "well" metadata: the fields of view it holds
  * A/1/0/.zattrs           "multiscales" and "omero" — an image
- * A/1/0/<level>/          one resolution level
- * A/1/0/<level>/t.c.z.y.x one chunk, which is one field of view
+ * A/1/0/0/                the image's one resolution level
+ * A/1/0/0/t.c.z.y.x       one chunk, which is one field of view
  * ```
  *
  * None of it exists on disk and the original data is never touched: OME-Zarr
@@ -29,7 +29,6 @@
  * assembles a plate rather than a stack of unrelated images — no viewer-side
  * layout, and the same numbers hold whether one well is open or ninety-six.
  */
-import { levelExtent } from './model';
 import { columnName, rowName } from './plate';
 import type { ChunkGeometry } from './chunk';
 import type { PlateModel, Well } from './types';
@@ -41,6 +40,15 @@ const NGFF_VERSION = '0.4';
 /** The single assembled image inside each well. */
 const FIELD_PATH = '0';
 
+/**
+ * The image's one resolution level.
+ *
+ * There is no pyramid: the chunks are the fields of view as acquired, and
+ * anything coarser would be a second copy of the data to keep consistent with
+ * the first. A viewer zoomed out reduces on the GPU from what it has loaded.
+ */
+const LEVEL_PATH = '0';
+
 /** What a request under the plate's namespace resolves to. */
 export type Resolution =
   | { kind: 'json'; body: string }
@@ -48,23 +56,19 @@ export type Resolution =
   | { kind: 'empty' }
   | { kind: 'missing' };
 
-/** Shape of a well's image at one resolution level. */
-export function levelShape(well: Well, model: PlateModel, level: number) {
-  const outY = levelExtent(well.strideY, level);
-  const outX = levelExtent(well.strideX, level);
+/** Shape of a well's assembled image: its grid of fields, chunk by chunk. */
+export function imageShape(well: Well, model: PlateModel) {
   return {
-    outY,
-    outX,
-    shape: [model.sizeT, model.sizeC, well.sizeZ, well.gridRows * outY, well.gridColumns * outX],
-    chunks: [1, 1, 1, outY, outX],
-    /** Voxel size in micrometres. Reducing by k halves y and x exactly. */
-    scale: [
-      1,
-      1,
-      model.spacing.z,
-      (model.spacing.y * well.strideY) / outY,
-      (model.spacing.x * well.strideX) / outX,
+    shape: [
+      model.sizeT,
+      model.sizeC,
+      well.sizeZ,
+      well.gridRows * well.strideY,
+      well.gridColumns * well.strideX,
     ],
+    chunks: [1, 1, 1, well.strideY, well.strideX],
+    /** Voxel size in micrometres. */
+    scale: [1, 1, model.spacing.z, model.spacing.y, model.spacing.x],
   };
 }
 
@@ -109,10 +113,10 @@ export function wellAttributes(): unknown {
  * levels aligned to each other at their shared corner.
  */
 export function imageAttributes(model: PlateModel, well: Well): unknown {
-  const datasets = Array.from({ length: well.levels }, (_, level) => {
-    const { scale } = levelShape(well, model, level);
-    return {
-      path: String(level),
+  const { scale } = imageShape(well, model);
+  const datasets = [
+    {
+      path: LEVEL_PATH,
       coordinateTransformations: [
         { type: 'scale', scale },
         {
@@ -126,8 +130,8 @@ export function imageAttributes(model: PlateModel, well: Well): unknown {
           ],
         },
       ],
-    };
-  });
+    },
+  ];
 
   return {
     multiscales: [
@@ -161,8 +165,8 @@ export function imageAttributes(model: PlateModel, well: Well): unknown {
   };
 }
 
-function arrayMetadata(model: PlateModel, well: Well, level: number): unknown {
-  const { shape, chunks } = levelShape(well, model, level);
+function arrayMetadata(model: PlateModel, well: Well): unknown {
+  const { shape, chunks } = imageShape(well, model);
   return {
     zarr_format: 2,
     shape,
@@ -247,16 +251,15 @@ export function resolve(model: PlateModel, segments: string[]): Resolution {
   }
   if (rest.length !== 2) return { kind: 'missing' };
 
-  const level = /^\d+$/.test(rest[0]) ? Number(rest[0]) : -1;
-  if (level < 0 || level >= well.levels) return { kind: 'missing' };
+  if (rest[0] !== LEVEL_PATH) return { kind: 'missing' };
 
-  if (rest[1] === '.zarray') return json(arrayMetadata(model, well, level));
+  if (rest[1] === '.zarray') return json(arrayMetadata(model, well));
   if (rest[1] === '.zattrs') return json({ _ARRAY_DIMENSIONS: [...DIMS] });
 
   const indices = parseChunkKey(rest[1], DIMS.length);
   if (!indices) return { kind: 'missing' };
 
-  const { outY, outX, shape, chunks } = levelShape(well, model, level);
+  const { shape, chunks } = imageShape(well, model);
   for (let axis = 0; axis < indices.length; axis += 1) {
     if (indices[axis] >= Math.ceil(shape[axis] / chunks[axis])) return { kind: 'missing' };
   }
@@ -281,8 +284,6 @@ export function resolve(model: PlateModel, segments: string[]): Resolution {
       strideX: well.strideX,
       fieldY: source.sizeY,
       fieldX: source.sizeX,
-      outY,
-      outX,
     },
   };
 }

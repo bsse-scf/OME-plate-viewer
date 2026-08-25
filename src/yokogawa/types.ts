@@ -81,8 +81,6 @@ export interface Well {
    * of the level-0 array. This is what places wells relative to each other.
    */
   origin: { z: number; y: number; x: number };
-  /** Number of resolution levels; level *k* is downsampled by 2^k in y and x. */
-  levels: number;
   fields: Field[];
 }
 

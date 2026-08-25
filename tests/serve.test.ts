@@ -117,25 +117,6 @@ test('a full-resolution chunk is the field of view, overlap trimmed', async (t) 
   }
 });
 
-test('a reduced chunk is the mean of the block it covers', async (t) => {
-  const { get, cleanup } = await mount();
-  t.after(cleanup);
-
-  const values = await samples(await get('abc123/A/1/0/1/0.0.0.0.0'));
-  assert.equal(values.length, 24 * 24);
-
-  const inset = (DEFAULT_FIXTURE.field - DEFAULT_FIXTURE.stride) / 2;
-  for (const [j, i] of [[0, 0], [7, 3], [23, 23]]) {
-    let total = 0;
-    for (let dy = 0; dy < 2; dy += 1) {
-      for (let dx = 0; dx < 2; dx += 1) {
-        total += pixelValue(0, 0, 0, 0, inset + 2 * j + dy, inset + 2 * i + dx);
-      }
-    }
-    assert.equal(values[j * 24 + i], Math.round(total / 4));
-  }
-});
-
 test('a well with one field is served straight from the file', async (t) => {
   const { get, dataset, cleanup } = await mount();
   t.after(cleanup);
@@ -153,7 +134,6 @@ test('a well with one field is served straight from the file', async (t) => {
     passthroughRange(layout, {
       strideY: well.strideY, strideX: well.strideX,
       fieldY: field.sizeY, fieldX: field.sizeX,
-      outY: well.strideY, outX: well.strideX,
     }, dataset.model.dtype),
     'a full-resolution chunk of an untrimmed field should be a byte range',
   );
@@ -189,8 +169,8 @@ test('misses are honest and never leak outside the dataset', async (t) => {
 
   assert.equal((await get('nosuch/A1/.zattrs')).status, 404);
   assert.equal((await get('abc123/Z/9/0/.zattrs')).status, 404);
-  // Level 3 does not exist: the chunk would be smaller than the pyramid floor.
-  assert.equal((await get('abc123/A/1/0/3/.zarray')).status, 404);
+  // There is one resolution level, so there is no second one.
+  assert.equal((await get('abc123/A/1/0/1/.zarray')).status, 404);
   // Outside the array's chunk grid.
   assert.equal((await get('abc123/A/1/0/0/0.0.0.9.0')).status, 404);
   // A gap in the grid reads as the fill value, which Zarr spells "not found".

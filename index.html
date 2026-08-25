@@ -144,7 +144,7 @@
 └─ 1/                    column 1, i.e. well A1
    └─ 0/                 the well's image
       ├─ 0/              full resolution
-      └─ 1/ …            reduced resolutions</pre>
+            └─ 0/           the pixels</pre>
         <p>
           Nothing is uploaded, nothing is converted and nothing is written. Close the tab
           and every trace of it is gone.
@@ -168,11 +168,11 @@
             into one plate.
           </li>
           <li>
-            <strong>Coarser levels</strong> — every image also offers reduced resolutions,
-            built by sampling rows and averaging columns, so a plate overview reads a
-            fraction of the data instead of all of it. Averaging keeps the exposure the
-            same at every zoom, so one contrast setting holds from a single nucleus to
-            the whole plate.
+            <strong>Full resolution only</strong> — there is no pyramid. The chunks are
+            the fields of view as acquired, so nothing is ever resampled and what you see
+            is what the microscope recorded. Zoomed out, the viewer reduces on the GPU
+            from what it has loaded, which means a whole plate of tiled wells is more
+            than it can hold at once.
           </li>
           <li>
             <strong>Channels</strong> — colours, names and display ranges are written as

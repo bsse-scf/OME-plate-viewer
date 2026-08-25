@@ -23,7 +23,6 @@ export interface Harness {
   datasetId: string;
   wells: string[];
   channels: string[];
-  levels: number;
   /** Chunk extent at level 0, for the byte-level check. */
   stride: number;
   imageRoot: string;
@@ -64,7 +63,6 @@ export async function setUp(): Promise<Harness> {
     datasetId: dataset.id,
     wells: model.wells.map((well) => well.id),
     channels: model.channels.map((channel) => channel.name),
-    levels: model.wells[0].levels,
     stride: model.wells[0].strideY,
     imageRoot: imageUrl(dataset.id, model.wells[0]),
     singleWellUrl: viewerUrl(dataset.id, model, [model.wells[0]]),

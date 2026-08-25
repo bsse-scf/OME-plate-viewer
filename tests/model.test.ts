@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 import { loadPlateModel } from '../src/yokogawa/model';
 import { columnName, rowName, wellName } from '../src/yokogawa/plate';
-import { levelShape, imageAttributes } from '../src/yokogawa/zarr';
+import { imageAttributes, imageShape } from '../src/yokogawa/zarr';
 import type { PlateModel } from '../src/yokogawa/types';
 import { DEFAULT_FIXTURE, writeFixture } from './fixtures';
 import { directoryHandle } from './node-handles';
@@ -100,37 +100,34 @@ test('wells are spaced by their own extent, not the plate pitch', async (t) => {
   assert.ok(b3.origin.y + extent(b3).y <= a1.origin.y + pitch + widest + 1e-9);
 });
 
-test('every resolution level covers the same physical extent', async (t) => {
+test('the image is one resolution level, one chunk per field of view', async (t) => {
   const { model, cleanup } = await fixtureModel();
   t.after(cleanup);
 
   const well = model.wells[0];
-  // 48 px cells reduce to 24 and 12 before hitting the pyramid floor.
-  assert.equal(well.levels, 3);
-
   const attributes = imageAttributes(model, well) as {
-    multiscales: { datasets: { coordinateTransformations: { type: string; scale?: number[]; translation?: number[] }[] }[] }[];
+    multiscales: { datasets: { path: string; coordinateTransformations: unknown[] }[] }[];
   };
   const datasets = attributes.multiscales[0].datasets;
-  assert.equal(datasets.length, well.levels);
+  assert.equal(datasets.length, 1, 'there is no pyramid');
+  assert.equal(datasets[0].path, '0');
 
-  for (let level = 0; level < well.levels; level += 1) {
-    const { shape, scale, chunks } = levelShape(well, model, level);
-    // Same physical size in x and y at every level.
-    assert.ok(Math.abs(shape[3] * scale[3] - 96 * 0.5) < 1e-9);
-    assert.ok(Math.abs(shape[4] * scale[4] - 96 * 0.5) < 1e-9);
-    // One chunk per field of view, at every level.
-    assert.equal(shape[3] / chunks[3], well.gridRows);
-    assert.equal(shape[4] / chunks[4], well.gridColumns);
+  const { shape, chunks, scale } = imageShape(well, model);
+  // The chunk is the acquisition stride, and the image is the grid of them.
+  assert.deepEqual(chunks, [1, 1, 1, well.strideY, well.strideX]);
+  assert.equal(shape[3] / chunks[3], well.gridRows);
+  assert.equal(shape[4] / chunks[4], well.gridColumns);
+  // Full resolution: the voxel size is the pixel size.
+  assert.equal(scale[3], model.spacing.y);
+  assert.equal(scale[4], model.spacing.x);
 
-    // The declared corner is the same at every level, which is what keeps the
-    // levels registered to one another.
-    const [{ scale: declared }, { translation }] = datasets[level]
-      .coordinateTransformations as unknown as [{ scale: number[] }, { translation: number[] }];
-    assert.deepEqual(declared, scale);
-    assert.ok(Math.abs(translation[4] - declared[4] / 2 - well.origin.x) < 1e-9);
-    assert.ok(Math.abs(translation[3] - declared[3] / 2 - well.origin.y) < 1e-9);
-  }
+  // The declared corner is the image's own corner, half a voxel back from the
+  // centre of voxel zero.
+  const [{ scale: declared }, { translation }] = datasets[0]
+    .coordinateTransformations as unknown as [{ scale: number[] }, { translation: number[] }];
+  assert.deepEqual(declared, scale);
+  assert.ok(Math.abs(translation[4] - declared[4] / 2 - well.origin.x) < 1e-9);
+  assert.ok(Math.abs(translation[3] - declared[3] / 2 - well.origin.y) < 1e-9);
 });
 
 test('omero metadata carries the vendor colours', async (t) => {

@@ -395,8 +395,9 @@ async function checkCancellation(page) {
       request.onerror = () => reject(request.error);
     });
 
-    // Level 1 is built rather than handed back as a byte range, in every
-    // acquisition, so it is the level where cancelling saves real work.
+    // Only a chunk that has to be built is worth cancelling; where a field of
+    // view has no overlap to trim, the answer is a byte range of the file and
+    // the browser handles the cancelling itself.
     const rowName = (row) => {
       let name = '';
       let rest = row;
@@ -405,15 +406,16 @@ async function checkCancellation(page) {
       return name;
     };
     const keys = [];
+    const built = record.model.wells.some((well) => well.gridColumns > 1);
+    if (!built) return null;
     for (const well of record.model.wells) {
-      const level = Math.min(1, well.levels - 1);
       const image = `${rowName(well.row)}/${well.column + 1}/0`;
       for (let c = 0; c < record.model.sizeC; c += 1) {
         for (let z = 0; z < well.sizeZ; z += 1) {
           for (let gy = 0; gy < well.gridRows; gy += 1) {
             for (let gx = 0; gx < well.gridColumns; gx += 1) {
               keys.push(
-                new URL(`./_zarr/${record.id}/${image}/${level}/0.${c}.${z}.${gy}.${gx}`,
+                new URL(`./_zarr/${record.id}/${image}/0/0.${c}.${z}.${gy}.${gx}`,
                   location.href).href,
               );
             }
@@ -449,6 +451,10 @@ async function checkCancellation(page) {
     return { alone, afterCancelling, behindLive, size };
   });
 
+  if (timings === null) {
+    console.log('  cancellation skipped: every chunk here is a plain byte range');
+    return;
+  }
   console.log(
     `  one chunk alone ${timings.alone.toFixed(0)} ms; ` +
       `after cancelling ${timings.size} ${timings.afterCancelling.toFixed(0)} ms; ` +
@@ -590,7 +596,6 @@ async function main() {
     }, HARNESS);
     check(harness.wells.length === 3, 'every well is found', harness.wells.join(', '));
     check(harness.channels.length === 2, 'both channels are found');
-    check(harness.levels === 3, 'the pyramid has three levels', String(harness.levels));
 
     const attributes = await page.evaluate(
       async (url) => (await fetch(`${url}.zattrs`)).json(),
@@ -598,7 +603,12 @@ async function main() {
     );
     check(
       attributes.multiscales?.[0]?.version === '0.4',
-      'the worker serves OME-NGFF 0.4 multiscales',
+      'the worker serves OME-Zarr 0.4 multiscales',
+    );
+    check(
+      attributes.multiscales?.[0]?.datasets?.length === 1,
+      'the image has one resolution level',
+      String(attributes.multiscales?.[0]?.datasets?.length),
     );
     check(
       attributes.omero?.channels?.length === 2 &&

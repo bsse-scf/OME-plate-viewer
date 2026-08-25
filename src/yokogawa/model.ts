@@ -14,20 +14,6 @@ import { findMetadataFile, parseOmeXml, type OmeDataset, type OmeImage } from '.
 import { wellName } from './plate';
 import type { ChannelInfo, Field, PlateModel, PlateGeometry, Well } from './types';
 
-/**
- * Stop adding resolution levels once a chunk would be smaller than this.
- *
- * Coarse levels are what make a whole-plate view affordable — each one costs
- * half as many rows to read as the last — so the pyramid is taken as far down
- * as it usefully goes. Below a handful of pixels a chunk is all overhead: the
- * number of requests per level is fixed at one per field of view, so the read
- * stops shrinking while the per-request cost does not.
- */
-const MIN_CHUNK_EXTENT = 8;
-
-/** Hard ceiling on the pyramid, so a pathological stride cannot run away. */
-const MAX_LEVELS = 9;
-
 /** Empty space left between wells, as a fraction of the widest well. */
 const WELL_GAP = 0.5;
 
@@ -57,24 +43,6 @@ function defaultWindow(omeType: string): { start: number; end: number; min: numb
   };
   const [min, max] = limits[omeType] ?? [0, 65535];
   return { start: min, end: max, min, max };
-}
-
-/** How many resolution levels a chunk of this size supports. */
-export function levelCount(strideY: number, strideX: number): number {
-  let levels = 1;
-  while (
-    levels < MAX_LEVELS &&
-    Math.ceil(strideY / 2 ** levels) >= MIN_CHUNK_EXTENT &&
-    Math.ceil(strideX / 2 ** levels) >= MIN_CHUNK_EXTENT
-  ) {
-    levels += 1;
-  }
-  return levels;
-}
-
-/** Chunk extent at a level: the level-0 stride halved once per level. */
-export function levelExtent(stride: number, level: number): number {
-  return Math.max(1, Math.ceil(stride / 2 ** level));
 }
 
 /**
@@ -162,7 +130,6 @@ function buildWell(
       y: originStage.y - (fieldY / 2 - insetY) * spacing.y,
       x: originStage.x - (fieldX / 2 - insetX) * spacing.x,
     },
-    levels: levelCount(strideY, strideX),
     fields,
   };
 }

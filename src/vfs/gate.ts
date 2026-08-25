@@ -2,15 +2,15 @@
  * Admission control for chunk reads.
  *
  * Two things have to be true at once. Peak memory must stay bounded however
- * fast the user zooms, and a viewport's worth of chunks must not be served one
- * dozen at a time when most of them are small — a single z step asks for
- * hundreds of chunks, and at a coarse level each is a few hundred kilobytes
- * over a network filesystem, where the cost is latency rather than bandwidth.
+ * fast the user zooms, and a viewport's worth of chunks must not be served a
+ * dozen at a time when each is small — a single z step asks for hundreds of
+ * them over a filesystem that may well be remote, where the cost is latency
+ * rather than bandwidth.
  *
- * So the limit is a **budget of bytes in flight** rather than a count. A
- * full-resolution chunk holds nine megabytes of working set and gets about ten
- * slots; a coarse one holds a few hundred kilobytes and gets as many as the
- * concurrency ceiling allows. The same budget covers both.
+ * So the limit is a **budget of bytes in flight** rather than a count. A chunk
+ * is a field of view, and a large one holds nine megabytes of working set and
+ * gets about ten slots where a small one gets as many as the concurrency
+ * ceiling allows. The same budget covers both.
  *
  * The other half is letting go. Neuroglancer cancels the chunks it no longer
  * needs the moment the view moves, which is what keeps it responsive — but only

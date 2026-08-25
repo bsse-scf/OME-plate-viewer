@@ -16,7 +16,7 @@ import { readPlaneLayout } from '../src/yokogawa/tiff';
 import { contiguousData } from '../src/yokogawa/tiff';
 import { openDatasetFile } from '../src/vfs/files';
 import { serveZarr } from '../src/vfs/serve';
-import { imagePath, levelShape } from '../src/yokogawa/zarr';
+import { imagePath, imageShape } from '../src/yokogawa/zarr';
 import { fieldCount, planeCount } from '../src/yokogawa/types';
 import { MODEL_VERSION, type DatasetRecord } from '../src/vfs/protocol';
 import { directoryHandle } from './node-handles';
@@ -46,9 +46,8 @@ for (const path of paths) {
     const well = model.wells[0];
     console.log(
       `  well ${well.id}: ${well.gridRows}x${well.gridColumns} fields of view, ` +
-        `stride ${well.strideY}x${well.strideX} px, ${well.levels} levels`,
+        `stride ${well.strideY}x${well.strideX} px`,
     );
-    assert.ok(well.levels >= 1);
 
     // Every field must be reachable and be a plane the reader can serve.
     const first = well.fields[0].files.find(Boolean)!;
@@ -82,17 +81,18 @@ for (const path of paths) {
     assert.equal((await get(`${image}/.zgroup`)).status, 200);
     assert.equal((await get(`${image}/.zattrs`)).status, 200);
 
-    // One chunk at every level, timed, so a regression in the read strategy is
-    // visible rather than merely slow.
-    for (let level = 0; level < well.levels; level += 1) {
-      const { outY, outX } = levelShape(well, model, level);
-      const at = Date.now();
-      const response = await get(`${image}/${level}/0.0.0.0.0`);
-      assert.equal(response.status, 200, `level ${level}`);
-      const bytes = await response.arrayBuffer();
-      assert.equal(bytes.byteLength, outY * outX * model.bytesPerSample);
-      console.log(`  level ${level}: ${outY}x${outX} chunk in ${Date.now() - at} ms`);
-    }
+    // One chunk, timed, so a regression in the read strategy is visible rather
+    // than merely slow.
+    const { shape, chunks } = imageShape(well, model);
+    const at = Date.now();
+    const response = await get(`${image}/0/0.0.0.0.0`);
+    assert.equal(response.status, 200);
+    const bytes = await response.arrayBuffer();
+    assert.equal(bytes.byteLength, chunks[3] * chunks[4] * model.bytesPerSample);
+    console.log(
+      `  image ${shape[3]}x${shape[4]}, chunk ${chunks[3]}x${chunks[4]} ` +
+        `in ${Date.now() - at} ms`,
+    );
   });
 }
 

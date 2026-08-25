@@ -25,7 +25,7 @@
  * viewer needs no configuration for it.
  */
 import { imageUrl, siteUrl } from '../vfs/client';
-import { levelShape } from '../yokogawa/zarr';
+import { imageShape } from '../yokogawa/zarr';
 import type { PlateModel, Well } from '../yokogawa/types';
 
 /**
@@ -87,11 +87,11 @@ function plateBounds(model: PlateModel, wells: Well[]) {
 
   return {
     x: axis((well) => {
-      const { shape, scale } = levelShape(well, model, 0);
+      const { shape, scale } = imageShape(well, model);
       return [well.origin.x, well.origin.x + shape[4] * scale[4]];
     }),
     y: axis((well) => {
-      const { shape, scale } = levelShape(well, model, 0);
+      const { shape, scale } = imageShape(well, model);
       return [well.origin.y, well.origin.y + shape[3] * scale[3]];
     }),
     z: axis((well) => [well.origin.z, well.origin.z + well.sizeZ * model.spacing.z]),

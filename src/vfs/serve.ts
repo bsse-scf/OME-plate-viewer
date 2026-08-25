@@ -193,7 +193,7 @@ export interface ZarrServeOptions {
 /**
  * Serve a request under the `_zarr/` namespace.
  *
- * `GET|HEAD <base>_zarr/<dataset-id>/<row>/<column>/0/<level>/<t>.<c>.<z>.<y>.<x>`
+ * `GET|HEAD <base>_zarr/<dataset-id>/<row>/<column>/0/0/<t>.<c>.<z>.<y>.<x>`
  */
 export async function serveZarr(
   request: Request,
@@ -290,7 +290,8 @@ export async function serveZarr(
   // A chunk's size follows from its geometry, so the length can be declared
   // before a single pixel is read — which is what lets the response go out
   // first and the reading hang off it.
-  const length = chunk.geometry.outY * chunk.geometry.outX * parseDtype(chunk.dtype).bytes;
+  const length =
+    chunk.geometry.strideY * chunk.geometry.strideX * parseDtype(chunk.dtype).bytes;
 
   // HEAD and byte ranges are answered from a finished buffer: neither is on the
   // viewer's path, and both need the whole chunk anyway.

@@ -1,7 +1,7 @@
 /**
  * Service Worker hosting the virtual OME-Zarr namespace.
  *
- *   GET|HEAD <base>_zarr/<dataset-id>/<well>/<level>/<t>.<c>.<z>.<y>.<x>
+ *   GET|HEAD <base>_zarr/<dataset-id>/<row>/<column>/0/0/<t>.<c>.<z>.<y>.<x>
  *
  * The page parses a dropped dataset into a model and stores it, with the
  * folder's handle, in IndexedDB. This worker reads that record and answers
@@ -42,14 +42,13 @@ const ZARR_PREFIX = namespacePrefix(BASE_PATH, ZARR_SEGMENT);
 /**
  * How much chunk work may be in flight at once, in bytes of working set.
  *
- * Bounding memory by *bytes* rather than by a count is what lets the two cases
- * coexist. A full-resolution chunk holds around nine megabytes while it is
- * built, so this admits about ten of them; a chunk from the coarse levels a
- * plate view uses holds a few hundred kilobytes, so this admits as many as the
- * ceiling below allows. A fixed count would have to be set for the expensive
- * case and would then throttle the cheap one — which is the common one, since a
- * single z step asks for hundreds of chunks and each is one open of a file on a
- * filesystem that may well be remote.
+ * Bounding memory by *bytes* rather than by a count is what lets acquisitions
+ * of different shapes share one setting. A chunk is a field of view, and a
+ * field of view is whatever the objective and camera made it: nine megabytes of
+ * working set at 2000 px square, a fraction of that from a smaller sensor or a
+ * tighter crop. Counting chunks would have to be tuned for the largest and
+ * would then throttle the rest — and a single z step asks for hundreds of them,
+ * each one an open of a file on a filesystem that may well be remote.
  */
 const CHUNK_BUDGET_BYTES = 96 * 1024 * 1024;
 
@@ -191,9 +190,8 @@ async function resolveDirectoryCached(
  * Parsed TIFF directories, keyed by dataset and plane path.
  *
  * Reading one costs two small range reads. Caching them matters because a
- * single plane answers several chunks over a session — the same file is read
- * again at every resolution level, and again whenever the user comes back to
- * it — and because the entries are tiny: a few numbers and a strip table.
+ * plane is read again whenever the user comes back to it, and because the
+ * entries are tiny: a few numbers and a strip table.
  */
 const layoutCache = new Map<string, Promise<PlaneLayout>>();
 const LAYOUT_CACHE_LIMIT = 4096;

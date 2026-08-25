@@ -206,48 +206,38 @@ levels registered to each other at their shared corner.
 attribute, and the display ranges measured by the contrast pass. Neuroglancer
 reads all of it.
 
-### Resolution levels
+### One resolution level
 
-Level *k* is the same crop halved *k* times in y and x, and still one field per
-chunk. Level extents are `ceil(cell / 2^k)`, which for a 1400 px stride gives
-1400, 700, 350, 175, 88, 44, 22, 11 — eight levels. Because `ceil` is not exact
-division, each level declares the scale that makes its extent cover the same
-physical size, rather than assuming a clean factor of two. The pyramid stops
-when a chunk would be under 8 px: below that the read stops shrinking (the
-number of requests per level is fixed at one per field) while the per-request
-cost does not.
+There is no pyramid. The image is served at full resolution and nothing else,
+so the chunks are the fields of view exactly as acquired: nothing is ever
+resampled, and what a viewer shows is what the microscope recorded.
 
-z is not reduced. Stacks here are 7 to 10 planes, and Neuroglancer only ever
-loads the ones it is showing.
+That is a real trade, and worth stating plainly. Zoomed out, a viewer reduces on
+the GPU from what it has loaded, so a whole-plate view has to load everything.
+For the 30-well, 36-field, 4-channel acquisition that is 4320 chunks of 3.9 MB —
+**16.9 GB for a single z plane** — against Neuroglancer's default budget of 1 GB
+on the GPU and 2 GB in system memory. Measured, the plate view fills about two
+wells and then stops; it does not merely take a while.
+
+Acquisitions with one field of view per well are unaffected: the 96-well set is
+96 chunks of 8 MB, which fits, and its plate view draws completely in about five
+seconds. A single well is fine in both cases, and looks better than it did with
+a pyramid — no reduction, so no sampling artefacts.
 
 ## Serving a chunk
 
-`src/yokogawa/chunk.ts` turns one TIFF plane into one chunk:
+`src/yokogawa/chunk.ts` turns one TIFF plane into one chunk, and the only thing
+it does is **trim**: crop symmetrically to the acquisition stride, so
+neighbouring fields abut rather than overlap, and write the result in the
+array's dtype. Only the rows the crop covers are read.
 
-1. **Trim.** Crop symmetrically to the stride.
-2. **Reduce.** Average columns in full — they are already in memory — and
-   *sample* rows, at most two source rows per output row. A row is the smallest
-   thing worth reading from a file, so this is what makes a coarse level cheap:
-   at level 6 a chunk reads 44 rows of a 2000-row plane, about 2 % of it.
-3. **Write** in the array's dtype, into a buffer allocated at its final size.
+When the chunk *is* the plane — a field of view with no overlap to trim — there
+is nothing to do at all, and the response is a byte range of the file
+(`passthroughRange`): no crop, no copy.
 
-Row blocks close together are merged into one read and far apart are left
-separate, which turns the finest levels into a single sequential read and the
-coarsest into a handful of small ones.
-
-When the chunk *is* the plane — a well with one field, no overlap to trim, at
-level 0 — there is nothing to do at all, and its bytes are a range of the file
-(`passthroughRange`): no crop, no reduction, no copy out of the decoded rows.
-
-Measured on the example acquisitions, over a network filesystem:
-
-| level | chunk | time |
-| --- | --- | --- |
-| 0 | 1400 × 1400 | 31 ms |
-| 1 | 700 × 700 | 38 ms |
-| 3 | 175 × 175 | 20 ms |
-| 5 | 44 × 44 | 6 ms |
-| 7 | 11 × 11 | 9 ms |
+Measured on the example acquisitions, over a network filesystem: a 1400 × 1400
+chunk cropped from a 2000 × 2000 plane takes about 21 ms, and a 2000 × 2000
+chunk handed back as a byte range about 29 ms.
 
 ## The Service Worker
 
@@ -444,16 +434,15 @@ quietly undo an update.
 
 ## Costs, and what they buy
 
-Opening **one well** reads one chunk per field per visible channel and z — a few
-tens of megabytes at full resolution, less at any coarser level. It is
-immediate.
+Opening **one well** reads one chunk per field of view per visible channel and
+z. For the tiled example that is 144 chunks, about 560 MB, drawn within a few
+seconds.
 
-Opening the **whole plate** is the expensive case, and irreducibly so: showing
-every well at 1/64 still means touching at least one row per 64, in every file
-of the visible z and channels. For the 226 GB example that is around a gigabyte
-read once, streamed well by well, and cached by Neuroglancer for the rest of the
-session. The pyramid is taken as deep as it usefully goes precisely to keep that
-number down; a shallower one would multiply it.
+Opening the **whole plate** multiplies that by the number of wells. For a plate
+of single-field wells it is fine — 96 chunks, under a gigabyte, complete in
+about five seconds. For a plate of tiled wells it is not: 16.9 GB against a
+1 GB GPU budget, and the view stops after about two wells. Serving only full
+resolution is what makes the second case a limit rather than a wait.
 
 Peak memory is bounded by the admission budget rather than by the dataset: 96 MB
 of chunk working set in flight, whatever the zoom. Nothing accumulates between
@@ -586,7 +575,11 @@ the page. Use **Close dataset** when finished.
 
 **Read-only.** The worker rejects everything but `GET` and `HEAD`.
 
-**Fields are placed, not registered.** Tiles abut on the acquisition grid. An
+**No pyramid.** The image is served at full resolution only. A plate of tiled
+wells is then more than a viewer can hold at once — see
+[One resolution level](#one-resolution-level).
+
+**Fields are placed, not registered.** Fields abut on the acquisition grid. An
 acquisition whose stage positions are wrong will produce a montage that is wrong
 in the same way.
 
