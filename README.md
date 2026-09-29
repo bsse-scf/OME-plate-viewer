@@ -2,6 +2,7 @@
 
 [![Open the viewer](https://img.shields.io/badge/open-the%20viewer-2f56c8?style=for-the-badge)](https://m-albert.github.io/OME-plate-viewer/)
 
+
 A static web page for looking at **local** high-content screening plates.
 
 - **No installation.** Open the link above to run the viewer in your browser. There is no
